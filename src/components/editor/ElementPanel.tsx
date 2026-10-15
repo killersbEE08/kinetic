@@ -268,7 +268,7 @@ export function ElementPanel({ deck, slideIndex, el, frame, commit, onSelect }: 
               <Swatches deck={deck} value={st.fill ?? "accent"} allowNone onPick={(c) => setStyle({ fill: c }, "Header colour")} />
             </>
           )}
-          <p className="mt-2 text-[11px] text-ink-2">Click the table again to type in its cells. Tab moves between cells.</p>
+          <p className="mt-2 text-[11px] text-ink-2">Click the table again, then click a cell to type in it.</p>
         </Sub>
       )}
 
