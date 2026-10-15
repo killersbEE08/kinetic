@@ -71,6 +71,13 @@ Plans change **only** through the signed webhook. The browser can never set its 
 
 Files are stored under `u/<clerk user id>/<photo id>` and served only through `/api/assets/<id>` to the signed-in owner (row checked under RLS, then the key). The server checks the file's first bytes, so a renamed file can't pass as an image; SVG is not accepted. If the bucket isn't set up, uploads fall back to the browser.
 
+### 6. Share links, brand kits and stock photos
+1. Run `supabase/migrations/20261015120000_ai_rate_limit.sql` and then `supabase/migrations/20261016000000_sharing_brand.sql` in the Supabase SQL Editor. Until then, those pages answer "migration needed".
+2. Stock photos: create an app at [unsplash.com/developers](https://unsplash.com/developers) and set its Access Key as `UNSPLASH_ACCESS_KEY`. Without it, the "Free stock photos" option is hidden. Photos are hotlinked from Unsplash's CDN, the photographer is credited, and Unsplash's download counter is pinged when a photo is used, as their API guidelines require.
+3. Optional: `SHARE_SIGNING_SECRET`, a long random value used to sign viewer sessions. If unset, one is derived from the Supabase service key.
+
+Share links hold a snapshot of the deck, so later edits don't show until you press "Update to latest". Viewers are counted with a hash that changes every day, and no IP addresses are stored. The redesign view (`/redesign`) draws the original .pptx in the browser with [@aiden0z/pptx-renderer](https://github.com/aiden0z/pptx-renderer) (Apache-2.0), loaded only on that page.
+
 ## Deploy to Cloudflare
 
 ```bash
@@ -79,6 +86,8 @@ pnpm exec wrangler login
 pnpm exec wrangler secret put CLERK_SECRET_KEY
 pnpm exec wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 pnpm exec wrangler secret put GEMINI_API_KEY
+pnpm exec wrangler secret put UNSPLASH_ACCESS_KEY     # optional, stock photos
+pnpm exec wrangler secret put SHARE_SIGNING_SECRET    # optional
 pnpm exec wrangler secret put DODO_PAYMENTS_API_KEY
 pnpm exec wrangler secret put DODO_PAYMENTS_WEBHOOK_KEY
 pnpm exec wrangler secret put DODO_PRODUCT_PRO

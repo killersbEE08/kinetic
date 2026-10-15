@@ -11,10 +11,12 @@ import { RequireUser } from "@/components/auth/RequireUser";
 import { AppShell } from "@/components/app/AppShell";
 import { SlideView } from "@/components/deck/SlideView";
 import { AssetThumb, formatBytes, ImportZone, kindLabel, LibraryPicker, type ImportedDoc } from "@/components/app/assets-ui";
-import { ApiError, useBackend, type DeckSummary } from "@/lib/client/backend";
+import { ApiError, useBackend, type BrandKit, type DeckSummary, type ShareLink } from "@/lib/client/backend";
+import { fmtDuration, relTime as relTimeShare } from "@/components/app/ShareDialog";
 import type { AssetMeta } from "@/lib/client/assets";
 import { CreditCost, useMe } from "@/lib/client/me";
 import { saveDraft, type DraftPhoto } from "@/lib/client/draft";
+import { setPendingRedesign } from "@/lib/client/redesign";
 import { CREDIT_COST } from "@/lib/billing/credits";
 import { DECK_TYPES, type DeckType } from "@/lib/deck/schema";
 import { ASSET_PREFIX } from "@/lib/deck/media";
@@ -86,6 +88,23 @@ function CreateBox() {
   const [type, setType] = useState<DeckType>("pitch");
   const [slides, setSlides] = useState<string>("auto");
   const [look, setLook] = useState("theme:mono");
+  const [kits, setKits] = useState<BrandKit[]>([]);
+  const backend = useBackend();
+  useEffect(() => {
+    let cancelled = false;
+    backend
+      .listBrandKits()
+      .then((k) => {
+        if (cancelled) return;
+        setKits(k);
+        const d = k.find((x) => x.isDefault);
+        if (d) setLook(`kit:${d.id}`);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [backend]);
   const [language, setLanguage] = useState("English");
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
@@ -119,6 +138,7 @@ function CreateBox() {
       photos,
       themeId: kind === "theme" ? id : undefined,
       look: kind === "tpl" ? id : null,
+      brandKitId: kind === "kit" ? id : null,
       autostart: true,
     });
     router.push("/new");
@@ -189,13 +209,42 @@ function CreateBox() {
             <p className="tabular mt-1 text-right text-[12px] text-ink-2">{wordsOf(notes).toLocaleString()} words</p>
           </>
         )}
-        {(mode === "import" || mode === "redesign") && (
+        {mode === "redesign" && (
+          <label
+            className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[10px] border-2 border-dashed border-line px-6 py-8 text-center hover:border-ink-2"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const f = e.dataTransfer.files[0];
+              if (f) {
+                setPendingRedesign(f);
+                router.push("/redesign");
+              }
+            }}
+          >
+            <span className="text-[15px] font-medium">Drop your PowerPoint (.pptx) here, or <span className="text-accent underline">browse</span></span>
+            <span className="max-w-[560px] text-[13px] text-ink-2">See each original slide next to its redesign, then keep the new design or the original, slide by slide. Facts, numbers, notes and photos are kept.</span>
+            <input
+              type="file"
+              accept=".pptx"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) {
+                  setPendingRedesign(f);
+                  router.push("/redesign");
+                }
+              }}
+            />
+          </label>
+        )}
+        {mode === "import" && (
           <>
             <ImportZone onImported={onImported}>
-              <span className="text-[15px] font-medium">{mode === "redesign" ? "Drop your PowerPoint (.pptx) here, or " : "Drop files or photos here, or "}<span className="text-accent underline">browse</span></span>
+              <span className="text-[15px] font-medium">Drop files or photos here, or <span className="text-accent underline">browse</span></span>
               <span className="max-w-[560px] text-[13px] text-ink-2">{dropHint}</span>
             </ImportZone>
-            <input aria-label="Instructions (optional)" className="field mt-3 text-[14px]" placeholder={mode === "redesign" ? "Anything to change? (optional) e.g. Shorter, for investors, 10 slides" : "What is it for? (optional) e.g. Seed pitch for investors"} value={prompt} maxLength={4000} onChange={(e) => setPrompt(e.target.value)} />
+            <input aria-label="Instructions (optional)" className="field mt-3 text-[14px]" placeholder="What is it for? (optional) e.g. Seed pitch for investors" value={prompt} maxLength={4000} onChange={(e) => setPrompt(e.target.value)} />
           </>
         )}
 
@@ -230,6 +279,11 @@ function CreateBox() {
             {SLIDE_COUNTS.map((n) => <option key={n} value={String(n)}>{n === "auto" ? "Auto" : n}</option>)}
           </Select>
           <Select label="Look" value={look} onChange={setLook}>
+            {kits.length > 0 && (
+              <optgroup label="Your brand kits">
+                {kits.map((k) => <option key={k.id} value={`kit:${k.id}`}>{k.kit.name}</option>)}
+              </optgroup>
+            )}
             <optgroup label="Themes">
               {THEMES.map((t) => <option key={t.id} value={`theme:${t.id}`}>{t.name}</option>)}
             </optgroup>
@@ -358,6 +412,58 @@ function Tips({ compact = false }: { compact?: boolean }) {
         <Link href="/assets" className="btn btn-secondary btn-sm mt-3">Open photo library</Link>
       </div>
     </aside>
+  );
+}
+
+/** Latest visits on the user's share links (docs/09 ?4.3). Hidden until something was shared. */
+function Activity() {
+  const backend = useBackend();
+  const [links, setLinks] = useState<ShareLink[] | null>(null);
+  useEffect(() => {
+    if (backend.mode !== "cloud") return;
+    let cancelled = false;
+    backend
+      .listShares()
+      .then((l) => !cancelled && setLinks(l))
+      .catch(() => !cancelled && setLinks([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [backend]);
+  if (!links?.length) return null;
+  const visits = links
+    .flatMap((l) => (l.recent ?? []).map((r) => ({ ...r, l })))
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 5);
+  return (
+    <section aria-labelledby="act-h">
+      <div className="mb-3.5 flex items-baseline justify-between gap-3">
+        <h2 id="act-h" className="text-[17px] font-semibold tracking-[-0.01em]">Activity on your shared decks</h2>
+        <Link href="/shared" className="text-[13px] font-medium text-accent hover:underline">All analytics</Link>
+      </div>
+      {visits.length === 0 ? (
+        <p className="rounded-[14px] border border-dashed border-line px-5 py-6 text-[14px] text-ink-2">Nobody has opened your links yet. When they do, you&rsquo;ll see it here.</p>
+      ) : (
+        <ul className="divide-y divide-line rounded-[14px] border border-line bg-surface">
+          {visits.map((v, i) => {
+            const per = v.l.perSlideMs ?? [];
+            const top = per.length ? per.indexOf(Math.max(...per)) : -1;
+            return (
+              <li key={i} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-[14px]">
+                <span>
+                  <b className="font-semibold">{v.email ?? (v.l.name ? `Someone from ${v.l.name}` : "Someone")}</b> opened <b className="font-semibold">{v.l.deckTitle}</b>
+                </span>
+                <span className="tabular text-[12px] text-ink-2">
+                  {v.slidesSeen} of {v.l.slideCount} slides ? {fmtDuration(v.totalMs)}
+                  {top >= 0 && per[top] > 0 ? ` ? most time overall on slide ${top + 1}` : ""}
+                </span>
+                <span className="ml-auto text-[12px] text-ink-2">{relTimeShare(v.at)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -520,6 +626,7 @@ function DashboardInner() {
       ) : decks && decks.length > 0 ? (
         <>
           <Continue decks={decks} />
+          <Activity />
           {decks.length > 1 && <Tips />}
         </>
       ) : null}

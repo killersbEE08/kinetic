@@ -7,7 +7,7 @@ import { splitItem } from "@/lib/deck/layouts";
 import type { Theme } from "@/lib/deck/themes";
 import { useReducedMotion } from "@/lib/client/hooks";
 import { useAssetUrl } from "@/lib/client/assets";
-import { isAssetSrc, libraryUrl } from "@/lib/deck/media";
+import { isAssetSrc, isUnsplashSrc, libraryUrl, unsplashUrl } from "@/lib/deck/media";
 import { Icon } from "./Icon";
 import { Decor, Footer, Logo } from "./Brand";
 import { Mockup } from "./Mockup";
@@ -546,6 +546,24 @@ function Photo({ el, run, scale, frac }: { el: ImageElement; run: boolean; scale
   }
   // Pick the smaller file for thumbnails; the browser uses the width hint to choose.
   const px = Math.max(320, Math.ceil(1920 * scale * frac));
+  if (isUnsplashSrc(el.src)) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- Unsplash requires hotlinking their CDN URLs
+      <img
+        src={unsplashUrl(el.src, 1920)}
+        srcSet={`${unsplashUrl(el.src, 640)} 640w, ${unsplashUrl(el.src, 1280)} 1280w, ${unsplashUrl(el.src, 1920)} 1920w`}
+        sizes={`${px}px`}
+        alt={el.alt}
+        crossOrigin="anonymous"
+        referrerPolicy="no-referrer"
+        loading={scale < 0.3 ? "lazy" : "eager"}
+        decoding="async"
+        draggable={false}
+        className={cls}
+        style={pos}
+      />
+    );
+  }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- slides render at arbitrary scales; plain img with srcset is simpler and works on Workers
     <img

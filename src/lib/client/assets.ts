@@ -34,8 +34,15 @@ function emit() {
   for (const l of listeners) l();
 }
 
-/** Called by the backend provider. Ids requested before a loader exists are loaded now. */
-export function setAssetLoader(fn: (id: string) => Promise<Blob>) {
+let locked = false;
+
+/**
+ * Called by the backend provider. Ids requested before a loader exists are loaded now.
+ * `lock` (used by the public viewer) keeps this loader even if a signed-in provider sets one later.
+ */
+export function setAssetLoader(fn: (id: string) => Promise<Blob>, opts: { lock?: boolean } = {}) {
+  if (locked && !opts.lock) return;
+  if (opts.lock) locked = true;
   loader = fn;
   for (const id of waiting) void load(id);
   waiting.clear();

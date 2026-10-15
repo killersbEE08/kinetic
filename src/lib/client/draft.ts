@@ -31,6 +31,8 @@ export interface Draft {
   /** Template whose design (theme, brand kit, motion) the new deck should reuse. */
   look?: string | null;
   brandName?: string;
+  /** Brand kit chosen on the dashboard. */
+  brandKitId?: string | null;
   /** Start writing the outline as soon as /new opens. */
   autostart?: boolean;
 }

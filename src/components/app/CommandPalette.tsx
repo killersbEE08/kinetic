@@ -3,7 +3,7 @@
 // Ctrl/⌘ K palette (docs/09 §4.7): jump to decks, templates and pages, or run an action.
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileUp, Home, Images, LayoutTemplate, Plus, Presentation, Settings, Tag } from "lucide-react";
+import { FileUp, Home, Images, LayoutTemplate, Link2, Palette, Plus, Presentation, Settings, Tag } from "lucide-react";
 import { useBackend, type DeckSummary } from "@/lib/client/backend";
 import { CATEGORY_LABEL, TEMPLATES } from "@/lib/deck/templates";
 import { fuzzyScore } from "./palette-score";
@@ -69,13 +69,15 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       ...decks.map((d) => ({ id: `d:${d.id}`, group: "Decks" as const, label: d.title, hint: `${d.slideCount} slides`, icon: Presentation, run: go(`/d/${d.id}`) })),
       { id: "a:new", group: "Actions", label: "New deck", hint: "Describe it or add files", icon: Plus, run: go("/new") },
       { id: "a:import", group: "Actions", label: "Import a file", hint: "PDF, Word, PowerPoint, Excel", icon: FileUp, run: go("/dashboard?mode=import") },
-      { id: "a:redesign", group: "Actions", label: "Redesign a PowerPoint deck", icon: FileUp, run: go("/dashboard?mode=redesign") },
+      { id: "a:redesign", group: "Actions", label: "Redesign a PowerPoint deck", icon: FileUp, run: go("/redesign") },
       { id: "a:photos", group: "Actions", label: "Upload photos", icon: Images, run: go("/assets") },
       ...TEMPLATES.map((t) => ({ id: `t:${t.id}`, group: "Templates" as const, label: t.name, hint: CATEGORY_LABEL[t.category], icon: LayoutTemplate, run: go(`/t/${t.id}`) })),
       { id: "g:home", group: "Go to", label: "Home", icon: Home, run: go("/dashboard") },
       { id: "g:decks", group: "Go to", label: "All decks", icon: Presentation, run: go("/decks") },
       { id: "g:templates", group: "Go to", label: "Templates", icon: LayoutTemplate, run: go("/templates") },
       { id: "g:photos", group: "Go to", label: "Photos", icon: Images, run: go("/assets") },
+      { id: "g:brand", group: "Go to", label: "Brand kits", hint: "Logo, colours, fonts", icon: Palette, run: go("/brand") },
+      { id: "g:shared", group: "Go to", label: "Shared links", hint: "Views and time per slide", icon: Link2, run: go("/shared") },
       { id: "g:plans", group: "Go to", label: "Plans and usage", icon: Tag, run: go("/pricing") },
       { id: "g:settings", group: "Go to", label: "Settings", hint: "Account, data export", icon: Settings, run: go("/settings") },
     ];

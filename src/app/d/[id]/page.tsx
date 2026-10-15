@@ -4,6 +4,7 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ExportDialog } from "@/components/app/ExportDialog";
+import { ShareDialog } from "@/components/app/ShareDialog";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { AccountArea, ErrorNote } from "@/components/ui/chrome";
 import { SlideView } from "@/components/deck/SlideView";
@@ -48,6 +49,7 @@ function Editor({ id }: { id: string }) {
   // /d/<id>?export=1 (from the dashboard) opens the download dialog.
   const search = useSearchParams();
   const [exportOpen, setExportOpen] = useState(search.get("export") === "1");
+  const [shareOpen, setShareOpen] = useState(search.get("share") === "1");
 
   const commit = useCallback(
     (ops: PatchOp[], opts: { label: string; author?: "user" | "ai" }) => {
@@ -222,6 +224,7 @@ function Editor({ id }: { id: string }) {
           </button>
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShareOpen(true)} disabled={!!pending}>Share</button>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setExportOpen(true)} disabled={!!pending}>Download</button>
           <Link href={`/d/${deck.id}/present?slide=${si + 1}`} className="btn btn-primary btn-sm">Present</Link>
           <AccountArea />
@@ -423,6 +426,7 @@ function Editor({ id }: { id: string }) {
         </aside>
       </div>
       <ExportDialog deck={deck} slideIndex={Math.max(0, si)} open={exportOpen} onClose={() => setExportOpen(false)} />
+      <ShareDialog deckId={deck.id} open={shareOpen} onClose={() => setShareOpen(false)} />
     </div>
   );
 }

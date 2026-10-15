@@ -112,6 +112,10 @@ export async function readJson(req: Request, maxBytes = 1_000_000): Promise<unkn
 /** Maps Postgres errors raised by our SQL functions (plan_limit / credit_limit) to 402. */
 export function dbError(error: { message?: string; code?: string } | null, fallback: string): never {
   const msg = error?.message ?? "";
+  // Table missing: the database hasn't had the latest migration yet.
+  if (error?.code === "PGRST205" || error?.code === "42P01" || /could not find the (table|function)/i.test(msg)) {
+    throw new HttpError(503, "This feature needs a database update on the server. Run the latest file in supabase/migrations.", "migration_needed");
+  }
   if (msg.startsWith("plan_limit:")) throw new HttpError(402, msg.replace("plan_limit: ", ""), "plan_limit");
   if (msg.startsWith("credit_limit:")) throw new HttpError(402, msg.replace("credit_limit: ", ""), "credit_limit");
   if (msg.startsWith("rate_limit:")) throw new HttpError(429, msg.replace("rate_limit: ", ""), "rate_limited", { "Retry-After": "60" });

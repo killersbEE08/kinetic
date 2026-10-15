@@ -17,6 +17,7 @@ export const config = {
   supabaseEnabled: () => !!(env("NEXT_PUBLIC_SUPABASE_URL") && env("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")),
   geminiEnabled: () => !!env("GEMINI_API_KEY"),
   dodoEnabled: () => !!(env("DODO_PAYMENTS_API_KEY") && env("DODO_PAYMENTS_WEBHOOK_KEY")),
+  unsplashEnabled: () => !!env("UNSPLASH_ACCESS_KEY"),
   geminiModel: () => env("GEMINI_MODEL") ?? "gemini-3.8-flash",
   appUrl: () => normalizeOrigin(env("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000"),
   /** Origins allowed to send session tokens. */

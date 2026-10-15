@@ -10,6 +10,7 @@ export interface PhotoRef {
   src: string;
   alt: string;
   focal?: [number, number];
+  credit?: { name: string; url: string };
 }
 
 /** Text layout → its photo version. */
@@ -23,7 +24,7 @@ const PHOTO_VERSION: Record<string, string> = {
 function withPhoto(slide: Slide, photo: PhotoRef): Slide | null {
   const target = PHOTO_VERSION[slide.layout];
   if (!target || slide.elements.some((e) => e.type === "image")) return null;
-  const img: Element = { id: newId("el"), slot: "media", type: "image", src: photo.src, alt: photo.alt.slice(0, 250) || "Photo", focal: photo.focal ?? [0.5, 0.5], source: [], aiSuggested: false };
+  const img: Element = { id: newId("el"), slot: "media", type: "image", src: photo.src, alt: photo.alt.slice(0, 250) || "Photo", focal: photo.focal ?? [0.5, 0.5], ...(photo.credit ? { credit: photo.credit } : {}), source: [], aiSuggested: false };
   const next = swapLayout({ ...slide, elements: [img, ...slide.elements] }, target);
   // Only keep the swap if everything still fits the photo layout's limits.
   const layout = getLayout(target);

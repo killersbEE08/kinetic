@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ChartElement, Deck, Element, Frame, Motion, ShapeKind, Slide } from "@/lib/deck/schema";
 import { ElementPanel, MultiPanel } from "./ElementPanel";
+import { StockSearch, UnsplashCredit } from "./StockSearch";
 import { EASINGS, MOTION_PRESETS, TRANSITIONS, TRIGGERS } from "@/lib/deck/schema";
 import type { PatchOp } from "@/lib/deck/patch";
 import { LAYOUTS, getLayout } from "@/lib/deck/layouts";
@@ -13,7 +14,7 @@ import { swapLayout } from "@/lib/deck/compose";
 import { addPhotoToSlide, canHavePhoto, type PhotoRef } from "@/lib/deck/place";
 import { Segmented } from "@/components/ui/chrome";
 import { AssetThumb, ImportZone } from "@/components/app/assets-ui";
-import { useBackend } from "@/lib/client/backend";
+import { useBackend, type BrandKit } from "@/lib/client/backend";
 import type { AssetMeta } from "@/lib/client/assets";
 
 type Commit = (ops: PatchOp[], opts: { label: string }) => boolean;
@@ -155,6 +156,7 @@ export function DesignPanel({ deck, slideIndex, selected, selectedIds = [], onSe
       {!selected && <AddPhoto key={slide.id} slide={slide} slideIndex={slideIndex} commit={commit} />}
       {!selected && slide.elements.some((e) => e.type === "image") && <p className="text-[12px] text-ink-2">Click the photo on the slide to swap it for one of yours.</p>}
       {selected?.type === "mockup" && <p className="rounded-[10px] border border-line p-3 text-[13px] text-ink-2">Product screens are edited by asking for a change in the Ask tab, for example &ldquo;rename the first row to Invoices&rdquo;.</p>}
+      <BrandKitPicker deck={deck} commit={commit} />
       {deck.brand && (
         <div className="flex items-center justify-between gap-3 rounded-[10px] border border-line p-3 text-[13px]">
           <span>
@@ -175,6 +177,44 @@ export function DesignPanel({ deck, slideIndex, selected, selectedIds = [], onSe
         </div>
       )}
     </div>
+  );
+}
+
+/** Apply one of the user's brand kits to the whole deck. */
+function BrandKitPicker({ deck, commit }: { deck: Deck; commit: Commit }) {
+  const backend = useBackend();
+  const [kits, setKits] = useState<BrandKit[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    backend
+      .listBrandKits()
+      .then((k) => !cancelled && setKits(k))
+      .catch(() => !cancelled && setKits([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [backend]);
+  if (!kits) return null;
+  const current = kits.find((k) => deck.brand && k.kit.name === deck.brand.name && k.kit.primary === deck.brand.primary);
+  return (
+    <Field label="Brand kit">
+      {kits.length ? (
+        <select
+          className="field"
+          value={current?.id ?? ""}
+          onChange={(e) => {
+            const k = kits.find((x) => x.id === e.target.value);
+            if (k) commit([{ op: "add", path: "/brand", value: k.kit }], { label: `Apply ${k.kit.name} brand` });
+            else if (deck.brand) commit([{ op: "remove", path: "/brand" }], { label: "Remove brand" });
+          }}
+        >
+          <option value="">{deck.brand && !current ? `${deck.brand.name} (from template)` : "None (theme colours)"}</option>
+          {kits.map((k) => <option key={k.id} value={k.id}>{k.kit.name}</option>)}
+        </select>
+      ) : (
+        <a href="/brand" className="block text-[13px] font-medium text-accent hover:underline">Create a brand kit with your logo and colours</a>
+      )}
+    </Field>
   );
 }
 
@@ -209,6 +249,10 @@ export function PhotoChooser({ value, onChoose }: { value?: string; onChoose: (p
             {uploads.map((a) => tile(a.id, ASSET_PREFIX + a.id, a.alt, <AssetThumb id={a.id} alt="" className="aspect-[4/3] w-full" />, { src: ASSET_PREFIX + a.id, alt: a.alt || a.name }))}
           </div>
         )}
+      </div>
+      <div>
+        <p className="mb-1.5 text-[12px] font-medium text-ink-2">Free stock photos</p>
+        <StockSearch onChoose={onChoose} />
       </div>
       <div>
         <p className="mb-1.5 text-[12px] font-medium text-ink-2">Built-in library</p>
@@ -272,6 +316,7 @@ function PhotoPicker({ el, path, commit }: { el: Extract<Element, { type: "image
               { op: "replace", path: `${path}/src`, value: m.src },
               { op: "replace", path: `${path}/alt`, value: m.alt },
               { op: "replace", path: `${path}/focal`, value: m.focal ?? [0.5, 0.5] },
+              ...(m.credit ? [{ op: "add" as const, path: `${path}/credit`, value: m.credit }] : el.credit ? [{ op: "remove" as const, path: `${path}/credit` }] : []),
             ],
             { label: "Change photo" },
           )
@@ -282,7 +327,7 @@ function PhotoPicker({ el, path, commit }: { el: Extract<Element, { type: "image
         <input className="field mt-1 text-[13px]" value={alt} maxLength={250} onChange={(e) => setAlt(e.target.value)} onBlur={() => alt.trim() && alt !== el.alt && commit([{ op: "replace", path: `${path}/alt`, value: alt.trim() }], { label: "Edit alt text" })} />
       </label>
       <FocalPicker el={el} path={path} commit={commit} />
-      <p className="mt-2 text-[11px] text-ink-2">Library photos are CC0 or public domain. Only upload photos you have the rights to.</p>
+      {el.credit ? <UnsplashCredit credit={el.credit} className="mt-2" /> : <p className="mt-2 text-[11px] text-ink-2">Library photos are CC0 or public domain. Only upload photos you have the rights to.</p>}
     </fieldset>
   );
 }

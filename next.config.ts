@@ -5,8 +5,8 @@ import type { NextConfig } from "next";
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.* https://challenges.cloudflare.com",
-  "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.* https://*.supabase.co",
-  "img-src 'self' data: blob: https://img.clerk.com",
+  "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.* https://*.supabase.co https://images.unsplash.com",
+  "img-src 'self' data: blob: https://img.clerk.com https://images.unsplash.com",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "worker-src 'self' blob:",

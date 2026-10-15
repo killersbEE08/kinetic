@@ -8,7 +8,8 @@ import { ICON_NAMES, type IconName } from "@/lib/deck/icons";
 import { SHAPES, type Element, type ShapeKind } from "@/lib/deck/schema";
 import { newChart, newIcon, newImage, newShape, newTable, newText, type TextPreset } from "@/lib/deck/canvas";
 import { PhotoChooser, SHAPE_LABEL } from "./Panels";
-import { assetIdOf, libraryUrl } from "@/lib/deck/media";
+import { assetIdOf, isUnsplashSrc, libraryUrl, unsplashUrl } from "@/lib/deck/media";
+import type { PhotoRef } from "@/lib/deck/place";
 import { assetUrlNow } from "@/lib/client/assets";
 
 function Menu({ label, icon, children, disabled, wide = false }: { label: string; icon: ReactNode; children: (close: () => void) => ReactNode; disabled?: boolean; wide?: boolean }) {
@@ -82,7 +83,7 @@ function IconPicker({ onPick }: { onPick: (n: IconName) => void }) {
   );
 }
 
-function PhotoDialog({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (src: string, alt: string) => void }) {
+function PhotoDialog({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (p: PhotoRef) => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -100,7 +101,7 @@ function PhotoDialog({ open, onClose, onPick }: { open: boolean; onClose: () => 
         {open && (
           <PhotoChooser
             onChoose={(p) => {
-              onPick(p.src, p.alt);
+              onPick(p);
               onClose();
             }}
           />
@@ -113,10 +114,11 @@ function PhotoDialog({ open, onClose, onPick }: { open: boolean; onClose: () => 
 /** Width ? height of a library photo or upload, so it's inserted without cropping. */
 async function photoAspect(src: string): Promise<number> {
   const id = assetIdOf(src);
-  const url = id ? assetUrlNow(id) : libraryUrl(src, 640);
+  const url = id ? assetUrlNow(id) : isUnsplashSrc(src) ? unsplashUrl(src, 400) : libraryUrl(src, 640);
   if (!url) return 4 / 3;
   try {
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.src = url;
     await img.decode();
     return img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 4 / 3;
@@ -177,7 +179,10 @@ export function InsertBar({ onInsert, count, disabled }: { onInsert: (el: Elemen
       <PhotoDialog
         open={photo}
         onClose={() => setPhoto(false)}
-        onPick={async (src, alt) => onInsert(newImage(src, alt, await photoAspect(src), count), "Add photo")}
+        onPick={async (p) => {
+          const el = newImage(p.src, p.alt, await photoAspect(p.src), count);
+          onInsert(p.credit && el.type === "image" ? { ...el, credit: p.credit } : el, "Add photo");
+        }}
       />
     </div>
   );

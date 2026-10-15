@@ -20,7 +20,7 @@ export interface Theme {
   headingTracking: string; // CSS letter-spacing
   headingCase: "none" | "uppercase";
   /** Present when the deck has a brand kit: logo, pattern and footer are drawn. */
-  brand?: { name: string; mark: string; pattern: string; onPrimary: string };
+  brand?: { name: string; mark: string; pattern: string; onPrimary: string; logo?: string; showName: boolean };
 }
 
 export const THEMES: Theme[] = [
@@ -123,7 +123,7 @@ export function withBrand(theme: Theme, brand?: Brand | null): Theme {
     colors: { ...theme.colors, accent: brand.primary, accent2: brand.secondary ?? mix(brand.primary, theme.colors.bg, 0.55) },
     headingFont: brand.font ?? theme.headingFont,
     headingCase: brand.font && brand.font !== theme.headingFont ? "none" : theme.headingCase,
-    brand: { name: brand.name, mark: brand.mark, pattern: brand.pattern, onPrimary: onColor(brand.primary) },
+    brand: { name: brand.name, mark: brand.mark, pattern: brand.pattern, onPrimary: onColor(brand.primary), logo: brand.logo, showName: brand.showName ?? true },
   };
 }
 

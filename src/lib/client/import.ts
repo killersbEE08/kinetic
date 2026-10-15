@@ -259,6 +259,81 @@ async function readPptx(buf: Uint8Array) {
 }
 
 // ---------------------------------------------------------------------------
+// PowerPoint, slide by slide (for "Redesign a deck": old and new slides line up one-for-one)
+
+export interface PptxSlideContent {
+  title: string;
+  lines: string[];
+  notes: string;
+  images: ImportedImage[];
+}
+
+export async function readPptxSlides(file: File): Promise<PptxSlideContent[]> {
+  if (file.size > MAX_IMPORT_BYTES) throw new ImportError(`${file.name} is over 50 MB.`);
+  const files = unzipSync(new Uint8Array(await file.arrayBuffer()));
+  const pres = files["ppt/presentation.xml"];
+  if (!pres) throw new ImportError("This file has no slides. Save it as .pptx from PowerPoint, Keynote or Google Slides.");
+  const rels = relsMap(files, "ppt/_rels/presentation.xml.rels");
+  const order = all(xml(strFromU8(pres)), "sldId").map((s) => resolvePath("ppt/presentation.xml", rels.get(s.getAttribute("r:id") ?? s.getAttributeNS("*", "id") ?? "") ?? ""));
+  const out: PptxSlideContent[] = [];
+  for (const path of order.slice(0, 60)) {
+    const raw = files[path];
+    if (!raw) continue;
+    const doc = xml(strFromU8(raw));
+    let title = "";
+    const lines: string[] = [];
+    for (const sp of all(doc, "sp")) {
+      const ph = all(sp, "ph")[0]?.getAttribute("type") ?? "";
+      const paras = all(sp, "p").map((p) => all(p, "t").map((t) => t.textContent ?? "").join("").replace(/\s+/g, " ").trim()).filter(Boolean);
+      if (!paras.length || ph === "sldNum" || ph === "dt" || ph === "ftr") continue;
+      if (!title && (ph === "title" || ph === "ctrTitle")) title = paras.join(" ");
+      else lines.push(...paras);
+    }
+    // Tables: one line per row.
+    for (const tbl of all(doc, "tbl")) {
+      for (const tr of all(tbl, "tr")) {
+        const cells = all(tr, "tc").map((tc) => all(tc, "t").map((t) => t.textContent ?? "").join(" ").trim());
+        if (cells.some(Boolean)) lines.push(cells.filter(Boolean).join(": "));
+      }
+    }
+    if (!title && lines.length) title = lines.shift()!;
+    const slideRels = relsMap(files, path.replace(/slides\/(slide\d+\.xml)$/, "slides/_rels/$1.rels"));
+    let notes = "";
+    const notesTarget = [...slideRels.values()].find((t) => /notesSlide\d+\.xml$/.test(t));
+    if (notesTarget && files[resolvePath(path, notesTarget)]) {
+      const nd = xml(strFromU8(files[resolvePath(path, notesTarget)]));
+      notes = all(nd, "sp")
+        .filter((sp) => (all(sp, "ph")[0]?.getAttribute("type") ?? "") === "body")
+        .flatMap((sp) => all(sp, "p").map((p) => all(p, "t").map((t) => t.textContent ?? "").join("").trim()))
+        .filter(Boolean)
+        .join("\n");
+    }
+    // Photos placed on this slide (in the order they're referenced).
+    const images: ImportedImage[] = [];
+    const embeds = all(doc, "blip").map((b) => b.getAttribute("r:embed") ?? b.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed") ?? "");
+    const relTargets = new Map<string, string>();
+    const relRaw = files[path.replace(/slides\/(slide\d+\.xml)$/, "slides/_rels/$1.rels")];
+    if (relRaw) for (const r of all(xml(strFromU8(relRaw)), "Relationship")) relTargets.set(r.getAttribute("Id") ?? "", r.getAttribute("Target") ?? "");
+    for (const rid of [...new Set(embeds)]) {
+      const target = relTargets.get(rid);
+      if (!target) continue;
+      const media = resolvePath(path, target);
+      const data = files[media];
+      const mime = MIME_BY_EXT[media.split(".").pop()?.toLowerCase() ?? ""];
+      if (!data || !mime) continue;
+      const blob = new Blob([data as BlobPart], { type: mime });
+      const dims = await imageSize(blob);
+      if (!dims || Math.min(dims.width, dims.height) < MIN_IMAGE_EDGE) continue;
+      images.push({ name: media.split("/").pop() ?? "image", blob, ...dims });
+      if (images.length >= 3) break;
+    }
+    out.push({ title: title.slice(0, 160), lines: lines.map((l) => l.slice(0, 300)).slice(0, 12), notes: notes.slice(0, 5000), images });
+  }
+  if (!out.length) throw new ImportError("No slides were found in this file.");
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Excel and CSV
 
 function colIndex(ref: string): number {

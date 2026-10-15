@@ -1,6 +1,7 @@
 "use client";
 
-import { CreditCost } from "@/lib/client/me";
+import { CreditCost, useMe } from "@/lib/client/me";
+import type { BrandKit, StockPhoto } from "@/lib/client/backend";
 import { CREDIT_COST, generateCost } from "@/lib/billing/credits";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -84,6 +85,27 @@ function NewDeckInner() {
     return q && getTemplate(q) ? q : draft.look && getTemplate(draft.look) ? draft.look : null;
   });
   const [brandName, setBrandName] = useState(draft.brandName ?? "");
+  const [kits, setKits] = useState<BrandKit[]>([]);
+  const [kitId, setKitId] = useState<string | null>(draft.brandKitId ?? null);
+  const [stock, setStock] = useState(true);
+  const { me } = useMe();
+  const stockOn = backend.mode === "cloud" && !!me?.features.unsplash;
+  useEffect(() => {
+    let cancelled = false;
+    backend
+      .listBrandKits()
+      .then((k) => {
+        if (cancelled) return;
+        setKits(k);
+        // The default kit applies unless the user picked something else on the dashboard.
+        if (draft.brandKitId === undefined) setKitId(k.find((x) => x.isDefault)?.id ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [backend, draft.brandKitId]);
+  const kit = kits.find((k) => k.id === kitId) ?? null;
   const [picker, setPicker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ text: string; upgrade: boolean } | null>(null);
@@ -92,12 +114,12 @@ function NewDeckInner() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ input, outline, themeId, intensity, docs, photos, look, brandName }));
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ input, outline, themeId, intensity, docs, photos, look, brandName, brandKitId: kitId }));
     } catch {}
-  }, [input, outline, themeId, intensity, docs, photos, look, brandName]);
+  }, [input, outline, themeId, intensity, docs, photos, look, brandName, kitId]);
 
   const lookTemplate = look ? getTemplate(look) : undefined;
-  const effectiveTheme = lookTemplate ? withBrand(getTheme(lookTemplate.themeId), { ...lookTemplate.brand, name: (brandName.trim() || outline?.title || lookTemplate.brand.name).slice(0, 40) }) : getTheme(themeId);
+  const effectiveTheme = !lookTemplate && kit ? withBrand(getTheme(themeId), kit.kit) : lookTemplate ? withBrand(getTheme(lookTemplate.themeId), { ...lookTemplate.brand, name: (brandName.trim() || outline?.title || lookTemplate.brand.name).slice(0, 40) }) : getTheme(themeId);
   const fullInput = useMemo<GenerationInput>(() => ({ ...input, notes: combinedNotes(input.notes, docs) }), [input, docs]);
   const words = useMemo(() => (fullInput.notes.trim() ? fullInput.notes.trim().split(/\s+/).length : 0), [fullInput.notes]);
 
@@ -139,8 +161,16 @@ function NewDeckInner() {
         next[i] = slide;
         return next;
       }), ac.signal);
-      let final = t ? { ...deck, brand: { ...t.brand, name: (brandName.trim() || outline.title).slice(0, 40) || "Brand" } } : deck;
-      final = placePhotos(final, photos).deck;
+      let final = t ? { ...deck, brand: { ...t.brand, name: (brandName.trim() || outline.title).slice(0, 40) || "Brand" } } : kit ? { ...deck, brand: kit.kit } : deck;
+      // Free stock photos fill the photo slots the user's own photos didn't cover.
+      let extra: DraftPhoto[] = [];
+      if (stockOn && stock) {
+        const found = await backend.searchStock(outline.title.slice(0, 80)).catch(() => ({ photos: [] as StockPhoto[] }));
+        extra = found.photos.slice(0, 5).map((p) => ({ id: p.id, name: p.alt, src: p.src, alt: p.alt, credit: { name: p.author, url: p.authorUrl }, downloadLocation: p.downloadLocation }) as DraftPhoto & { downloadLocation: string });
+      }
+      final = placePhotos(final, [...photos, ...extra]).deck;
+      const used = new Set(final.slides.flatMap((s) => s.elements.flatMap((e) => (e.type === "image" ? [e.src] : []))));
+      for (const p of extra as (DraftPhoto & { downloadLocation: string })[]) if (used.has(p.src)) void backend.trackStock(p.downloadLocation);
       const saved = await backend.createDeck(final);
       sessionStorage.removeItem(DRAFT_KEY);
       router.push(`/d/${saved.id}`);
@@ -391,6 +421,29 @@ function NewDeckInner() {
           </div>
 
           <div className="mt-10">
+            {(kits.length > 0 || stockOn) && (
+              <div className="mb-8 grid gap-4 rounded-[12px] border border-line bg-surface p-4 sm:grid-cols-2">
+                {kits.length > 0 && (
+                  <label className="text-[14px]">
+                    <span className="mb-1 block font-medium">Brand kit</span>
+                    <select className="field" value={look ? "" : (kitId ?? "")} disabled={!!look} onChange={(e) => setKitId(e.target.value || null)}>
+                      <option value="">None (theme colours)</option>
+                      {kits.map((k) => <option key={k.id} value={k.id}>{k.kit.name}{k.isDefault ? " (default)" : ""}</option>)}
+                    </select>
+                    {look && <span className="mt-1 block text-[12px] text-ink-2">A template design is selected; it brings its own colours.</span>}
+                  </label>
+                )}
+                {stockOn && (
+                  <label className="flex items-start gap-2.5 text-[14px]">
+                    <input type="checkbox" className="mt-1 h-4 w-4" checked={stock} onChange={(e) => setStock(e.target.checked)} />
+                    <span>
+                      <span className="block font-medium">Add free stock photos</span>
+                      <span className="block text-[12px] text-ink-2">Up to 5 photos from Unsplash matched to your topic, on slides that suit a photo. Your own photos go first.</span>
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
             <h3 className="text-[17px] font-semibold">Or use the design of a template</h3>
             <p className="mt-1 text-[14px] text-ink-2">Colours, heading font, pattern and motion come from the template. Your logo name replaces theirs; your content stays yours.</p>
             <div role="radiogroup" aria-label="Template design" className="mt-4 grid gap-4 sm:grid-cols-3 lg:grid-cols-4">

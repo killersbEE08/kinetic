@@ -5,16 +5,29 @@
 import type { CSSProperties } from "react";
 import type { Theme } from "@/lib/deck/themes";
 import { Icon } from "./Icon";
+import { useAssetUrl } from "@/lib/client/assets";
+
+function LogoImage({ src, size }: { src: string; size: number }) {
+  const url = useAssetUrl(src);
+  if (!url || url === "missing") return <span className="inline-block flex-none" style={{ width: size, height: size }} aria-hidden="true" />;
+  // eslint-disable-next-line @next/next/no-img-element -- blob: URL of the uploaded logo
+  return <img src={url} alt="" draggable={false} className="block flex-none object-contain" style={{ height: size, width: "auto", maxWidth: size * 5 }} />;
+}
 
 export function Logo({ theme, size = 56, showName = true, className = "" }: { theme: Theme; size?: number; showName?: boolean; className?: string }) {
   const b = theme.brand;
   if (!b) return null;
+  const withName = showName && b.showName;
   return (
     <span className={`inline-flex items-center ${className}`} style={{ gap: size * 0.32 }}>
-      <span className="inline-flex flex-none items-center justify-center" style={{ width: size, height: size, borderRadius: size * 0.28, background: theme.colors.accent }}>
-        <Icon name={b.mark} size={size * 0.58} stroke={2} color={b.onPrimary} />
-      </span>
-      {showName && (
+      {b.logo ? (
+        <LogoImage src={b.logo} size={size} />
+      ) : (
+        <span className="inline-flex flex-none items-center justify-center" style={{ width: size, height: size, borderRadius: size * 0.28, background: theme.colors.accent }}>
+          <Icon name={b.mark} size={size * 0.58} stroke={2} color={b.onPrimary} />
+        </span>
+      )}
+      {withName && (
         <span className="k-h" style={{ fontSize: size * 0.62, letterSpacing: "-0.02em", lineHeight: 1, textTransform: "none" }}>
           {b.name}
         </span>

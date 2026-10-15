@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { UserButton, useUser } from "@clerk/nextjs";
-import { Home, Images, LayoutTemplate, PanelLeftClose, PanelLeftOpen, Plus, Presentation, Search, Settings, Tag } from "lucide-react";
+import { Home, Images, LayoutTemplate, Link2, Palette, PanelLeftClose, PanelLeftOpen, Plus, Presentation, Search, Settings, Tag } from "lucide-react";
 import { useBackend } from "@/lib/client/backend";
 import { useMe } from "@/lib/client/me";
 import { MONTHLY_CREDITS } from "@/lib/billing/credits";
@@ -18,6 +18,8 @@ const NAV = [
   { href: "/decks", label: "Decks", icon: Presentation },
   { href: "/templates", label: "Templates", icon: LayoutTemplate },
   { href: "/assets", label: "Photos", icon: Images },
+  { href: "/brand", label: "Brand kits", icon: Palette },
+  { href: "/shared", label: "Shared links", icon: Link2 },
 ] as const;
 
 const PaletteCtx = createContext<() => void>(() => {});
@@ -204,7 +206,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom bar */}
       <nav aria-label="App" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface pb-[max(8px,env(safe-area-inset-bottom))] pt-2 md:hidden">
-        {[NAV[0], NAV[1], { href: "/new", label: "New", icon: Plus }, NAV[3], { href: "/settings", label: "Settings", icon: Settings }].map((n) => {
+        {[NAV[0], NAV[1], { href: "/new", label: "New", icon: Plus }, NAV[5], { href: "/settings", label: "Settings", icon: Settings }].map((n) => {
           const on = isActive(path, n.href);
           const Icon = n.icon;
           return (

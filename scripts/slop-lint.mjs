@@ -52,7 +52,8 @@ for (const file of walk(SRC)) {
     .forEach((line, i) => {
       // Engineering terms are allowed in code (docs/06 §3): skip import lines and identifiers.
       if (/^\s*import\s/.test(line)) return;
-      if (!allowPhrases) {
+      // `slop-lint-ignore` on a line marks a non-copy string (API parameters and the like).
+      if (!allowPhrases && !/slop-lint-ignore/.test(line)) {
         const text = userFacingText(line);
         for (const rx of phrases) {
           const m = text.match(rx);

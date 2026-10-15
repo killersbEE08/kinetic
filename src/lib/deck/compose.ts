@@ -22,7 +22,7 @@ export const SlotContent = z.object({
   items: z.array(z.string().max(300)).max(10).optional(),
   icons: z.array(z.enum(ICON_NAMES)).max(6).optional(),
   chart: ChartContent.optional(),
-  image: z.object({ src: z.string().regex(MEDIA_SRC_RX), alt: z.string().min(1).max(250), focal: z.tuple([z.number(), z.number()]).optional() }).optional(),
+  image: z.object({ src: z.string().regex(MEDIA_SRC_RX), alt: z.string().min(1).max(250), focal: z.tuple([z.number(), z.number()]).optional(), credit: z.object({ name: z.string().max(80), url: z.string().max(300) }).optional() }).optional(),
   mockup: z.object({ device: z.enum(["phone", "browser"]), url: z.string().max(80).optional(), screen: Screen }).optional(),
   suggested: z.boolean().optional(),
 });
@@ -76,7 +76,7 @@ export function composeSlide(input: SlottedSlide, existing?: Slide): Slide {
       if (!series[0]?.values.length) continue;
       elements.push({ ...base, type: "chart", kind, data: { labels, series }, unit: c.chart.unit, units: c.chart.units?.slice(0, 24) });
     } else if (def.accepts === "image" && c.image) {
-      elements.push({ ...base, type: "image", src: c.image.src, alt: c.image.alt, focal: c.image.focal ?? [0.5, 0.5] });
+      elements.push({ ...base, type: "image", src: c.image.src, alt: c.image.alt, focal: c.image.focal ?? [0.5, 0.5], ...(c.image.credit && /^https:\/\/unsplash\.com\//.test(c.image.credit.url) ? { credit: c.image.credit } : {}) });
     } else if (def.accepts === "mockup" && c.mockup) {
       elements.push({ ...base, type: "mockup", device: c.mockup.device, url: c.mockup.url, screen: c.mockup.screen });
     }
@@ -105,7 +105,7 @@ export function elementToSlot(el: Element): SlotContent {
     case "chart":
       return { ...base, chart: { kind: el.kind, labels: el.data.labels, series: el.data.series, unit: el.unit, units: el.units } };
     case "image":
-      return { ...base, image: { src: el.src, alt: el.alt, focal: el.focal } };
+      return { ...base, image: { src: el.src, alt: el.alt, focal: el.focal, credit: el.credit } };
     case "mockup":
       return { ...base, mockup: { device: el.device, url: el.url, screen: el.screen } };
     case "shape":

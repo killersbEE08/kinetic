@@ -36,7 +36,18 @@ export type MediaId = (typeof MEDIA)[number]["id"];
  * ("asset:<id>"). Uploaded files are only ever fetched through our own API with the user's
  * session, so a deck can never point at an outside URL.
  */
-export const MEDIA_SRC_RX = /^(?:\/media\/[a-z0-9-]{2,40}|asset:[a-z0-9_-]{8,32})$/;
+export const MEDIA_SRC_RX = /^(?:\/media\/[a-z0-9-]{2,40}|asset:[a-z0-9_-]{8,32}|https:\/\/images\.unsplash\.com\/[A-Za-z0-9_-]{4,80}(?:\?[A-Za-z0-9_=&%.~+-]{0,400})?)$/;
+
+/** Unsplash photos are hotlinked from images.unsplash.com, as the Unsplash API requires. */
+export const isUnsplashSrc = (src: string) => src.startsWith("https://images.unsplash.com/");
+
+/** Sized Unsplash image URL (their image CDN resizes on request). */
+export function unsplashUrl(src: string, w: number): string {
+  return `${src}${src.includes("?") ? "&" : "?"}w=${Math.round(w)}&q=80&auto=format&fit=max`;
+}
+
+/** Links back to Unsplash must carry these referral parameters (API guideline 3). */
+export const UNSPLASH_UTM = "?utm_source=kinetic&utm_medium=referral";
 
 export const ASSET_PREFIX = "asset:";
 

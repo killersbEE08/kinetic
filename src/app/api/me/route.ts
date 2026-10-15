@@ -24,7 +24,7 @@ export const GET = handle(async (req: Request) => {
     hasBillingAccount: !!profile?.dodo_customer_id,
     creditsRemaining: typeof credits === "number" ? credits : null,
     deckCount: count ?? 0,
-    features: { gemini: config.geminiEnabled(), billing: config.dodoEnabled(), storage: storageOn },
+    features: { gemini: config.geminiEnabled(), billing: config.dodoEnabled(), storage: storageOn, unsplash: config.unsplashEnabled(), sharing: config.supabaseEnabled() },
     storage: u ? { usedBytes: Number(u.used_bytes), limitBytes: Number(u.limit_bytes), count: u.asset_count } : undefined,
   });
 });

@@ -112,6 +112,8 @@ export const ImageEl = Base.extend({
   src: z.string().regex(MEDIA_SRC_RX),
   alt: z.string().min(1).max(250),
   focal: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).default([0.5, 0.5]),
+  // Photographer credit for stock photos (Unsplash requires attribution).
+  credit: z.object({ name: z.string().min(1).max(80), url: z.string().max(300).regex(/^https:\/\/unsplash\.com\//) }).optional(),
 });
 
 export const TONES = ["ok", "warn", "info", "muted"] as const;
@@ -226,6 +228,10 @@ export const Brand = z.object({
   font: z.enum(HEADING_FONTS).optional(),
   mark: z.enum(ICON_NAMES),
   pattern: z.enum(BRAND_PATTERNS).default("grid"),
+  /** Uploaded logo image ("asset:<id>"). When set it replaces the icon mark. */
+  logo: z.string().regex(/^asset:[a-z0-9_-]{8,32}$/).optional(),
+  /** Show the name next to the logo (off for logos that already contain the name). */
+  showName: z.boolean().optional(),
 });
 export type Brand = z.infer<typeof Brand>;
 

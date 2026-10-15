@@ -46,8 +46,55 @@ export interface Me {
   hasBillingAccount: boolean;
   creditsRemaining: number | null;
   deckCount: number;
-  features: { gemini: boolean; billing: boolean; storage: boolean };
+  features: { gemini: boolean; billing: boolean; storage: boolean; unsplash?: boolean; sharing?: boolean };
   storage?: { usedBytes: number; limitBytes: number; count: number };
+}
+
+export interface ShareOptions {
+  name?: string;
+  password?: string;
+  allowDownload?: boolean;
+  expiresAt?: string | null;
+}
+
+export interface ShareLink {
+  id: string;
+  deckId: string;
+  name: string;
+  snapshotVersion: number;
+  hasPassword: boolean;
+  allowDownload: boolean;
+  expiresAt: string | null;
+  revoked: boolean;
+  live: boolean;
+  createdAt: string;
+  updatedAt: string;
+  stats: { views: number; viewers: number; totalMs: number; lastViewedAt: string | null };
+  // Only from listShares() without a deck id:
+  deckTitle?: string;
+  slideCount?: number;
+  perSlideMs?: number[];
+  completed?: number;
+  recent?: { at: string; lastSeenAt: string; email: string | null; country: string | null; device: string | null; slidesSeen: number; totalMs: number }[];
+}
+
+export interface BrandKit {
+  id: string;
+  kit: Brand;
+  isDefault: boolean;
+}
+
+export interface StockPhoto {
+  id: string;
+  src: string;
+  thumb: string;
+  width: number;
+  height: number;
+  color: string | null;
+  alt: string;
+  author: string;
+  authorUrl: string;
+  downloadLocation: string;
 }
 
 export interface UploadInfo {
@@ -91,6 +138,16 @@ export interface Backend {
   uploadAsset(file: Blob, info: UploadInfo): Promise<AssetMeta>;
   updateAsset(id: string, patch: { alt?: string; name?: string }): Promise<void>;
   deleteAsset(id: string): Promise<void>;
+  /** Sharing, brand kits and stock photos: see the methods at the end of this interface. */
+  listShares(deckId?: string): Promise<ShareLink[]>;
+  createShare(deckId: string, opts: ShareOptions): Promise<ShareLink>;
+  updateShare(id: string, patch: Partial<Omit<ShareOptions, "password">> & { revoked?: boolean; refresh?: boolean; password?: string | null }): Promise<ShareLink>;
+  deleteShare(id: string): Promise<void>;
+  listBrandKits(): Promise<BrandKit[]>;
+  saveBrandKit(kit: BrandKit): Promise<void>;
+  deleteBrandKit(id: string): Promise<void>;
+  searchStock(q: string, page?: number): Promise<{ photos: StockPhoto[]; pages: number }>;
+  trackStock(downloadLocation: string): Promise<void>;
   /** Everything stored for this account, as a ZIP (decks as JSON plus photo files). */
   exportData(onProgress?: (msg: string) => void): Promise<Blob>;
   /** Permanently deletes the account, decks and photos. */
@@ -305,6 +362,36 @@ export function CloudBackendProvider({ children }: { children: ReactNode }) {
         await call(`/api/assets/${encodeURIComponent(id)}`, { method: "DELETE" });
         forgetAsset(id);
       },
+      async listShares(deckId) {
+        const r = await call(deckId ? `/api/decks/${encodeURIComponent(deckId)}/shares` : "/api/shares");
+        return ((await r.json()) as { links: ShareLink[] }).links;
+      },
+      async createShare(deckId, opts) {
+        const r = await call(`/api/decks/${encodeURIComponent(deckId)}/shares`, { method: "POST", body: JSON.stringify(opts) });
+        return ((await r.json()) as { link: ShareLink }).link;
+      },
+      async updateShare(id, patch) {
+        const r = await call(`/api/shares/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+        return ((await r.json()) as { link: ShareLink }).link;
+      },
+      async deleteShare(id) {
+        await call(`/api/shares/${encodeURIComponent(id)}`, { method: "DELETE" });
+      },
+      async listBrandKits() {
+        return ((await (await call("/api/brand-kits")).json()) as { kits: BrandKit[] }).kits;
+      },
+      async saveBrandKit(kit) {
+        await call("/api/brand-kits", { method: "PUT", body: JSON.stringify(kit) });
+      },
+      async deleteBrandKit(id) {
+        await call(`/api/brand-kits?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      },
+      async searchStock(q, page = 1) {
+        return (await (await call(`/api/photos/unsplash?q=${encodeURIComponent(q)}&page=${page}`)).json()) as { photos: StockPhoto[]; pages: number };
+      },
+      async trackStock(downloadLocation) {
+        await call("/api/photos/unsplash/download", { method: "POST", body: JSON.stringify({ downloadLocation }) }).catch(() => undefined);
+      },
       async exportData(onProgress) {
         onProgress?.("Collecting your decks");
         const data = (await (await call("/api/me/account")).json()) as Record<string, unknown> & { photos?: { id: string; name: string; mime: string }[] };
@@ -351,6 +438,19 @@ function writeStore(s: Record<string, Deck & { updatedAt?: string }>) {
 }
 
 const updatedAtKey = "kinetic.demo.updated.v1";
+
+const demoKits = {
+  read(): BrandKit[] {
+    try {
+      return JSON.parse(localStorage.getItem("kinetic.demo.brandkits.v1") ?? "[]") as BrandKit[];
+    } catch {
+      return [];
+    }
+  },
+  write(kits: BrandKit[]) {
+    localStorage.setItem("kinetic.demo.brandkits.v1", JSON.stringify(kits));
+  },
+};
 function touch(id: string) {
   const m = JSON.parse(localStorage.getItem(updatedAtKey) ?? "{}") as Record<string, string>;
   m[id] = new Date().toISOString();
@@ -445,6 +545,30 @@ export function DemoBackendProvider({ children }: { children: ReactNode }) {
       uploadAsset: browserAssets.upload,
       updateAsset: browserAssets.update,
       deleteAsset: browserAssets.remove,
+      async listShares() {
+        return [];
+      },
+      async createShare() {
+        throw new ApiError(503, "Share links need an account. Add Clerk and Supabase keys to turn them on.", "share_disabled");
+      },
+      async updateShare() {
+        throw new ApiError(503, "Share links need an account.", "share_disabled");
+      },
+      async deleteShare() {},
+      async listBrandKits() {
+        return demoKits.read();
+      },
+      async saveBrandKit(kit) {
+        const all = demoKits.read().filter((k) => k.id !== kit.id).map((k) => (kit.isDefault ? { ...k, isDefault: false } : k));
+        demoKits.write([...all, kit]);
+      },
+      async deleteBrandKit(id) {
+        demoKits.write(demoKits.read().filter((k) => k.id !== id));
+      },
+      async searchStock() {
+        throw new ApiError(503, "Stock photo search needs the server. Add an UNSPLASH_ACCESS_KEY and sign-in keys to turn it on.", "unsplash_disabled");
+      },
+      async trackStock() {},
       async exportData(onProgress) {
         const photos = await localAssets.list();
         return zipExport({ exportedAt: new Date().toISOString(), mode: "demo", decks: Object.values(readStore()), photos }, photos, (id) => localAssets.blob(id), onProgress);
