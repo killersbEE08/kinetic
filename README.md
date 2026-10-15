@@ -33,6 +33,9 @@ With no keys set, the app runs in **demo mode**. Decks are saved in your browser
 | Photos in decks | Chosen photos are placed after generation: the first behind the title, the rest on point and statement slides, never two in a row. In the editor: "Add a photo to this slide", swap any photo for an upload, choose which part stays in view |
 | Template designs | Any of the 22 templates can lend its theme, brand colours, heading font and pattern to a new deck, with the user's own name in the logo |
 | Download | **PowerPoint**: every slide as native, editable text boxes, shapes, pictures and real charts (data editable in PowerPoint); build animations matching Kinetic's motion (fade up, wipe, zoom, word-by-word type-on, on-click steps); fade, push and Morph transitions (Morph falls back to fade before PowerPoint 2019); speaker notes; deck fonts or Office-safe fonts. **PDF**: one slide per page, or a handout with notes. **PNG**: the current slide at 1920×1080. All made in the browser |
+| App shell and dashboard | Left sidebar (collapses to icons, remembered), phone tab bar, Ctrl/? K search across decks, templates and actions. Dashboard: one create box with four ways to start (describe, paste notes, import files, redesign a .pptx) that writes the outline straight away, "continue where you left off" with a check-status line, first-visit checklist and sample, templates |
+| Settings | Account details, plan and credit usage, "Download my data" (ZIP of decks and photos), delete account (type DELETE; blocked while a paid plan is active) |
+| Safety | Per-user rate limits (Cloudflare rate-limit binding: AI 20/min, uploads 30/min), HSTS, a report-only content security policy, browser error reports to `/api/report` (no deck content), credit cost shown on every AI button |
 | Not built yet | Brand kit editor, share links, MP4 export, teams, text recognition for scanned PDFs |
 
 ## Connect the real services
@@ -87,11 +90,21 @@ pnpm run deploy
 
 To test in the real Workers runtime locally, copy `.dev.vars.example` → `.dev.vars` and run `pnpm run preview` (serves on :8787).
 
+## Automatic checks (GitHub Actions)
+
+`.github/workflows/ci.yml` runs typecheck, lint, slop-lint, tests and a build on every push. Pushes to `main` also deploy, once these are set in GitHub ? Settings ? Secrets and variables ? Actions:
+
+- Secrets: `CLOUDFLARE_API_TOKEN` (template "Edit Cloudflare Workers"), `CLOUDFLARE_ACCOUNT_ID`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `GEMINI_API_KEY`
+- Variable: `NEXT_PUBLIC_APP_URL`
+
+Without the Cloudflare token the deploy step is skipped. `gemini-contract.yml` checks every night that Gemini still accepts the app's JSON formats (`pnpm test:gemini` runs it locally).
+
 ## Scripts
 
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Next.js dev server |
+| `pnpm test:gemini` | Sends every AI response format to the configured Gemini model (needs `GEMINI_API_KEY`) |
 | `pnpm test` | Unit tests (deck schema, patches, scope rules, quality gates, webhook signatures, plan mapping) |
 | `pnpm lint` / `pnpm typecheck` | ESLint / TypeScript |
 | `pnpm slop-lint` | Fails on banned copy and visuals from docs/06 (hype words, exclamation marks, gradients, glassmorphism, idle animation, emoji) |
@@ -123,4 +136,6 @@ Design decisions worth knowing:
 - All API routes need a valid Clerk session token, except the Dodo webhook, which needs a valid signature less than 5 minutes old. Duplicate webhook deliveries are ignored.
 - The Supabase service role key is used only by the webhook. Everything else runs as the signed-in user, under RLS.
 - Request bodies are size-limited and validated with Zod; error messages never include internal details.
-- Not done yet: per-IP rate limiting (add Cloudflare rate-limiting rules or a KV counter before launch), CSP headers, and an outside security review.
+- Rate limits are per user (and per IP for `/api/report`), applied per Cloudflare location. Monthly AI budgets are enforced in Postgres.
+- The content security policy is report-only. Check `wrangler tail` for `csp_violation` lines for a week, then switch the header to `Content-Security-Policy` in `next.config.ts`.
+- Not done yet: an outside security review.

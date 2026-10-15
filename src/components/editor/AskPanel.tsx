@@ -1,5 +1,7 @@
 "use client";
 
+import { CreditCost } from "@/lib/client/me";
+import { CREDIT_COST } from "@/lib/billing/credits";
 import { useRef, useState } from "react";
 import type { Deck, Element } from "@/lib/deck/schema";
 import type { EditScope, PatchOp } from "@/lib/deck/patch";
@@ -179,6 +181,7 @@ export function AskPanel({
         <button type="submit" className="btn btn-primary btn-sm mt-2 w-full" disabled={busy || text.trim().length < 2}>
           {busy ? "Working" : "Propose change"}
         </button>
+        <CreditCost credits={CREDIT_COST.edit} className="mt-1 block text-center" />
       </form>
     </div>
   );

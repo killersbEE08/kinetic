@@ -31,6 +31,8 @@ export interface Draft {
   /** Template whose design (theme, brand kit, motion) the new deck should reuse. */
   look?: string | null;
   brandName?: string;
+  /** Start writing the outline as soon as /new opens. */
+  autostart?: boolean;
 }
 
 const BASE: GenerationInput = { prompt: "", notes: "", deckType: "custom", slideCount: "auto", audience: "", language: "English" };

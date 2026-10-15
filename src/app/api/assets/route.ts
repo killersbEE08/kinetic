@@ -21,7 +21,7 @@ const toMeta = (r: AssetRow) => ({ id: r.id, name: r.name, alt: r.alt, mime: r.m
 
 // GET /api/assets — the signed-in user's photos, newest first.
 export const GET = handle(async (req: Request) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "read");
   requireBucket();
   const { data, error } = await user.db.from("assets").select(COLUMNS).order("created_at", { ascending: false }).limit(500);
   if (error) dbError(error, "Could not load your photos.");
@@ -39,7 +39,7 @@ const Meta = z.object({
 // POST /api/assets — multipart form: `file` (image) + `meta` (JSON). The browser has already
 // resized the image and stripped its metadata; we still check size and file signature here.
 export const POST = handle(async (req: Request) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "upload");
   const bucket = requireBucket();
   const len = Number(req.headers.get("content-length") ?? 0);
   if (len > MAX_BYTES + 64_000) throw new HttpError(413, "That photo is too large (5 MB max).", "too_large");

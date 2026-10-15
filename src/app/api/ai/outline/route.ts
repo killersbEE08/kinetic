@@ -7,7 +7,7 @@ const Body = z.object({ input: GenerationInput });
 
 // POST /api/ai/outline — prompt + notes → editable outline (step 2 of New Deck).
 export const POST = handle(async (req: Request) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "ai");
   await ensureProfile(user);
   const body = Body.safeParse(await readJson(req, 1_000_000));
   if (!body.success) throw new HttpError(400, "Check the deck settings and try again.", "invalid_input");

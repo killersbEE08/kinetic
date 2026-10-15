@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { Deck } from "@/lib/deck/schema";
+import { suggestedCount } from "@/lib/deck/stats";
 import { dbError, ensureProfile, handle, HttpError, json, readJson, requireUser } from "@/lib/server/auth";
 
 // GET /api/decks — list the signed-in user's decks (metadata + first slide for the thumbnail).
 export const GET = handle(async (req: Request) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "read");
   const { data, error } = await user.db
     .from("decks")
     .select("id, title, theme_id, version, updated_at, doc")
@@ -23,6 +24,7 @@ export const GET = handle(async (req: Request) => {
       motionIntensity: (d.doc as Deck)?.motionIntensity ?? "standard",
       slideCount: (d.doc as Deck)?.slides?.length ?? 0,
       brand: (d.doc as Deck)?.brand,
+      suggestedCount: suggestedCount(d.doc as Deck),
     })),
   });
 });
@@ -31,7 +33,7 @@ const CreateBody = z.object({ deck: Deck });
 
 // POST /api/decks — save a newly generated deck.
 export const POST = handle(async (req: Request) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "write");
   await ensureProfile(user);
   const parsed = CreateBody.safeParse(await readJson(req, 2_000_000));
   if (!parsed.success) throw new HttpError(400, "That deck is not valid.", "invalid_deck");

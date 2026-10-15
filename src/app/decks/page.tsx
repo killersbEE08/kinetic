@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AppHeader, ErrorNote, UpgradeNote } from "@/components/ui/chrome";
+import { ErrorNote, UpgradeNote } from "@/components/ui/chrome";
+import { AppShell } from "@/components/app/AppShell";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { SlideView } from "@/components/deck/SlideView";
 import { ApiError, useBackend, type DeckSummary, type Me } from "@/lib/client/backend";
@@ -190,8 +191,9 @@ function DecksInner() {
 export default function DecksPage() {
   return (
     <RequireUser>
-      <AppHeader />
+      <AppShell>
       <DecksInner />
+      </AppShell>
     </RequireUser>
   );
 }

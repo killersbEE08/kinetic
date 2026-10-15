@@ -17,6 +17,7 @@ import { buildDeck } from "@/lib/deck/build";
 import { offlineOutline, offlineSlides } from "@/lib/ai/offline";
 import { buildProposal, EditError, offlineEdit } from "@/lib/ai/edit";
 import { composeSlide } from "@/lib/deck/compose";
+import { suggestedCount } from "@/lib/deck/stats";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string) {
@@ -34,6 +35,8 @@ export interface DeckSummary {
   motionIntensity: Intensity;
   slideCount: number;
   brand?: Brand;
+  /** Elements still marked "Suggested" (AI content not found in the user's material). */
+  suggestedCount?: number;
 }
 
 export interface Me {
@@ -88,6 +91,34 @@ export interface Backend {
   uploadAsset(file: Blob, info: UploadInfo): Promise<AssetMeta>;
   updateAsset(id: string, patch: { alt?: string; name?: string }): Promise<void>;
   deleteAsset(id: string): Promise<void>;
+  /** Everything stored for this account, as a ZIP (decks as JSON plus photo files). */
+  exportData(onProgress?: (msg: string) => void): Promise<Blob>;
+  /** Permanently deletes the account, decks and photos. */
+  deleteAccount(): Promise<void>;
+}
+
+/** Zips the account data. Photos are fetched one by one so a large library doesn't spike memory. */
+async function zipExport(data: Record<string, unknown>, photos: { id: string; name: string; mime: string }[], getPhoto: (id: string) => Promise<Blob>, onProgress?: (msg: string) => void): Promise<Blob> {
+  const { zipSync, strToU8 } = await import("fflate");
+  const files: Record<string, Uint8Array> = {
+    "kinetic-export.json": strToU8(JSON.stringify(data, null, 2)),
+    "README.txt": strToU8("Kinetic data export.\nkinetic-export.json: your decks (full documents), photo list and AI usage.\nphotos/: the photo files you uploaded.\nDecks can be re-imported by support on request.\n"),
+  };
+  const used = new Set<string>();
+  for (const [i, p] of photos.entries()) {
+    onProgress?.(`Adding photo ${i + 1} of ${photos.length}`);
+    try {
+      const ext = p.mime === "image/png" ? "png" : p.mime === "image/webp" ? "webp" : p.mime === "image/gif" ? "gif" : "jpg";
+      let name = (p.name.replace(/[^\w .-]+/g, "").trim() || "photo").slice(0, 60);
+      while (used.has(name)) name += "-" + p.id.slice(-4);
+      used.add(name);
+      files[`photos/${name}.${ext}`] = new Uint8Array(await (await getPhoto(p.id)).arrayBuffer());
+    } catch {
+      // A missing file shouldn't block the rest of the export.
+    }
+  }
+  onProgress?.("Making the ZIP file");
+  return new Blob([zipSync(files, { level: 0 }) as BlobPart], { type: "application/zip" });
 }
 
 async function toMeta(file: Blob, info: UploadInfo) {
@@ -274,6 +305,18 @@ export function CloudBackendProvider({ children }: { children: ReactNode }) {
         await call(`/api/assets/${encodeURIComponent(id)}`, { method: "DELETE" });
         forgetAsset(id);
       },
+      async exportData(onProgress) {
+        onProgress?.("Collecting your decks");
+        const data = (await (await call("/api/me/account")).json()) as Record<string, unknown> & { photos?: { id: string; name: string; mime: string }[] };
+        const cloudPhotos = data.photos ?? [];
+        const local = await localAssets.list().catch(() => []);
+        const getPhoto = async (id: string) => (cloudPhotos.some((p) => p.id === id) ? (await call(`/api/assets/${encodeURIComponent(id)}`)).blob() : localAssets.blob(id));
+        return zipExport({ ...data, browserPhotos: local }, [...cloudPhotos, ...local], getPhoto, onProgress);
+      },
+      async deleteAccount() {
+        await call("/api/me/account", { method: "DELETE", body: JSON.stringify({ confirm: "DELETE" }) });
+        for (const a of await localAssets.list().catch(() => [])) await localAssets.remove(a.id).catch(() => undefined);
+      },
     };
   }, [call, isLoaded, isSignedIn]);
 
@@ -333,7 +376,7 @@ export function DemoBackendProvider({ children }: { children: ReactNode }) {
         const s = readStore();
         const times = JSON.parse(localStorage.getItem(updatedAtKey) ?? "{}") as Record<string, string>;
         return Object.values(s)
-          .map((d) => ({ id: d.id, title: d.title, themeId: d.themeId, version: d.version, updatedAt: times[d.id] ?? new Date(0).toISOString(), firstSlide: d.slides[0] ?? null, motionIntensity: d.motionIntensity, slideCount: d.slides.length, brand: d.brand }))
+          .map((d) => ({ id: d.id, title: d.title, themeId: d.themeId, version: d.version, updatedAt: times[d.id] ?? new Date(0).toISOString(), firstSlide: d.slides[0] ?? null, motionIntensity: d.motionIntensity, slideCount: d.slides.length, brand: d.brand, suggestedCount: suggestedCount(d) }))
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       },
       async getDeck(id) {
@@ -402,6 +445,15 @@ export function DemoBackendProvider({ children }: { children: ReactNode }) {
       uploadAsset: browserAssets.upload,
       updateAsset: browserAssets.update,
       deleteAsset: browserAssets.remove,
+      async exportData(onProgress) {
+        const photos = await localAssets.list();
+        return zipExport({ exportedAt: new Date().toISOString(), mode: "demo", decks: Object.values(readStore()), photos }, photos, (id) => localAssets.blob(id), onProgress);
+      },
+      async deleteAccount() {
+        localStorage.removeItem(STORE_KEY);
+        localStorage.removeItem(updatedAtKey);
+        for (const a of await localAssets.list()) await browserAssets.remove(a.id);
+      },
     }),
     [],
   );

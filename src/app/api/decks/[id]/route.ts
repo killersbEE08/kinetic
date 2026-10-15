@@ -13,7 +13,7 @@ async function deckId(ctx: Ctx) {
 
 // GET /api/decks/:id
 export const GET = handle(async (req: Request, ctx: Ctx) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "read");
   const id = await deckId(ctx);
   const { data, error } = await user.db.from("decks").select("doc, version").eq("id", id).is("deleted_at", null).maybeSingle();
   if (error) dbError(error, "Could not load the deck.");
@@ -34,7 +34,7 @@ const PatchBody = z.object({
 
 // PATCH /api/decks/:id — apply JSON Patch ops with optimistic concurrency. 409 on version conflict.
 export const PATCH = handle(async (req: Request, ctx: Ctx) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "write");
   const id = await deckId(ctx);
   const body = PatchBody.safeParse(await readJson(req, 2_000_000));
   if (!body.success) throw new HttpError(400, "That change is not valid.", "invalid_patch");
@@ -71,7 +71,7 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
 
 // DELETE /api/decks/:id — soft delete.
 export const DELETE = handle(async (req: Request, ctx: Ctx) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "write");
   const id = await deckId(ctx);
   const { error } = await user.db.from("decks").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (error) dbError(error, "Could not delete the deck.");

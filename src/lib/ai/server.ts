@@ -5,6 +5,7 @@ import type { SlottedSlide } from "../deck/compose";
 import { toSlotted } from "../deck/compose";
 import { type AuthedUser, dbError } from "../server/auth";
 import { config } from "../server/env";
+import { CREDIT_COST, generateCost } from "../billing/credits";
 import { geminiJson, geminiModelName } from "./gemini";
 import { offlineOutline, offlineSlides, outlineSlideToSlotted } from "./offline";
 import { EditElementsReply, EditSlidesReply, editElementsPrompt, editSlidesPrompt, outlinePrompt, slidesPrompt } from "./prompts";
@@ -24,7 +25,7 @@ export const sourceTextOf = (input: Pick<GenerationInput, "prompt" | "notes">) =
 
 export async function makeOutline(user: AuthedUser, input: GenerationInput): Promise<{ outline: Outline; engine: Engine }> {
   if (engine() === "offline") return { outline: offlineOutline(input), engine: "offline" };
-  await chargeCredits(user, "outline", 2);
+  await chargeCredits(user, "outline", CREDIT_COST.outline);
   const p = outlinePrompt(input);
   const outline = await geminiJson({ ...p, maxOutputTokens: 8192 });
   return { outline, engine: "gemini" };
@@ -46,7 +47,7 @@ export async function writeSlides(
     return { slides, engine: "offline" };
   }
 
-  await chargeCredits(user, "generate", Math.min(50, n));
+  await chargeCredits(user, "generate", generateCost(n));
   const result: SlottedSlide[] = new Array(n);
   const batches: [number, number][] = [];
   for (let i = 0; i < n; i += BATCH) batches.push([i, Math.min(n, i + BATCH)]);
@@ -81,7 +82,7 @@ export async function proposeEdit(user: AuthedUser, deck: Deck, scope: EditScope
     return { ...buildProposal(deck, scope, change, summary, source || undefined), engine: "offline" };
   }
 
-  await chargeCredits(user, "edit", 1);
+  await chargeCredits(user, "edit", CREDIT_COST.edit);
   const lang = deck.language || "en";
 
   if (scope.kind === "element") {

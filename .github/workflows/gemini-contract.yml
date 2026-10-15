@@ -1,0 +1,28 @@
+# Nightly check that the configured Gemini model still accepts every schema Kinetic sends.
+# Needs the GEMINI_API_KEY repository secret. Uses about 4 small requests per run.
+name: Gemini contract
+
+on:
+  schedule:
+    - cron: "30 1 * * *" # 07:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-3.8-flash

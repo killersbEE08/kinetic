@@ -1,8 +1,11 @@
 "use client";
 
+import { CreditCost } from "@/lib/client/me";
+import { CREDIT_COST, generateCost } from "@/lib/billing/credits";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AppHeader, ErrorNote, Segmented, UpgradeNote } from "@/components/ui/chrome";
+import { ErrorNote, Segmented, UpgradeNote } from "@/components/ui/chrome";
+import { AppShell } from "@/components/app/AppShell";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { SlideView } from "@/components/deck/SlideView";
 import { ApiError, useBackend } from "@/lib/client/backend";
@@ -149,6 +152,15 @@ function NewDeckInner() {
     }
   }
 
+  // From the dashboard's create box: write the outline straight away (one click, not two).
+  const autostarted = useRef(false);
+  useEffect(() => {
+    if (autostarted.current || !draft.autostart || draft.outline) return;
+    autostarted.current = true;
+    void makeOutline();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on arrival
+  }, []);
+
   // ---- Outline editing helpers ----
   const updateSlide = (i: number, patch: Partial<Outline["slides"][number]>) =>
     setOutline((o) => (o ? { ...o, slides: o.slides.map((s, k) => (k === i ? { ...s, ...patch } : s)) } : o));
@@ -278,9 +290,12 @@ function NewDeckInner() {
                 Or start from one of {TEMPLATES.length} templates
               </Link>
             </span>
-            <button type="button" className="btn btn-primary" onClick={makeOutline} disabled={busy}>
-              {busy ? "Writing the outline" : "Continue"}
-            </button>
+            <span className="flex items-center gap-3">
+              <CreditCost credits={CREDIT_COST.outline} />
+              <button type="button" className="btn btn-primary" onClick={makeOutline} disabled={busy}>
+                {busy ? "Writing the outline" : "Continue"}
+              </button>
+            </span>
           </div>
           {busy && <p className="mt-3 text-right text-[13px] text-ink-2" role="status">Reading your material ({words.toLocaleString()} words) and planning the slides.</p>}
         </section>
@@ -400,7 +415,10 @@ function NewDeckInner() {
           </div>
           <div className="mt-8 flex justify-between">
             <button type="button" className="btn btn-secondary" onClick={() => setStep("outline")}>Back</button>
-            <button type="button" className="btn btn-primary" onClick={generate}>Generate {outline.slides.length} slides{photos.length ? ` with ${photos.length} photo${photos.length > 1 ? "s" : ""}` : ""}</button>
+            <span className="flex items-center gap-3">
+              <CreditCost credits={generateCost(outline.slides.length)} />
+              <button type="button" className="btn btn-primary" onClick={generate}>Generate {outline.slides.length} slides{photos.length ? ` with ${photos.length} photo${photos.length > 1 ? "s" : ""}` : ""}</button>
+            </span>
           </div>
         </section>
       )}
@@ -450,8 +468,9 @@ export default function NewDeckPage() {
   const isClient = useIsClient();
   return (
     <RequireUser>
-      <AppHeader />
+      <AppShell>
       {isClient ? <NewDeckInner /> : <div className="mx-auto max-w-[1080px] px-6 py-10" aria-busy="true"><div className="skeleton h-[420px]" /></div>}
+      </AppShell>
     </RequireUser>
   );
 }

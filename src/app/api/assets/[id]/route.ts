@@ -14,7 +14,7 @@ async function assetId(ctx: Ctx) {
 // GET /api/assets/:id — the file itself. Ownership is checked twice: the row must be visible
 // under RLS, and the object key contains the verified user id.
 export const GET = handle(async (req: Request, ctx: Ctx) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "read");
   const bucket = requireBucket();
   const id = await assetId(ctx);
   const { data, error } = await user.db.from("assets").select("mime").eq("id", id).maybeSingle();
@@ -39,7 +39,7 @@ const Patch = z.object({ alt: z.string().trim().min(1).max(250).optional(), name
 
 // PATCH /api/assets/:id — rename or change the description (alt text).
 export const PATCH = handle(async (req: Request, ctx: Ctx) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "write");
   const id = await assetId(ctx);
   const body = Patch.safeParse(await readJson(req, 4_000));
   if (!body.success) throw new HttpError(400, "Give the photo a name or description.", "bad_patch");
@@ -51,7 +51,7 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
 
 // DELETE /api/assets/:id — removes the row and the file. Slides that used it show a placeholder.
 export const DELETE = handle(async (req: Request, ctx: Ctx) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "write");
   const bucket = requireBucket();
   const id = await assetId(ctx);
   const { data, error } = await user.db.from("assets").delete().eq("id", id).select("id");

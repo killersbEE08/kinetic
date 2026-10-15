@@ -25,7 +25,15 @@
 			"bucket_name": "kinetic-assets",
 			"remote": true
 		}
-	],	// Plain (non-secret) config. Secrets are set with `wrangler secret put <NAME>`:
+	],	// Burst rate limits (per Cloudflare location, 60 s windows). Monthly AI budgets live in Postgres.
+	"ratelimits": [
+		{ "name": "RL_AI", "namespace_id": "4101", "simple": { "limit": 20, "period": 60 } },
+		{ "name": "RL_UPLOAD", "namespace_id": "4102", "simple": { "limit": 30, "period": 60 } },
+		{ "name": "RL_WRITE", "namespace_id": "4103", "simple": { "limit": 120, "period": 60 } },
+		{ "name": "RL_READ", "namespace_id": "4104", "simple": { "limit": 300, "period": 60 } },
+		{ "name": "RL_ANON", "namespace_id": "4105", "simple": { "limit": 60, "period": 60 } }
+	],
+	// Plain (non-secret) config. Secrets are set with `wrangler secret put <NAME>`:
 	//   CLERK_SECRET_KEY, SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY,
 	//   DODO_PAYMENTS_API_KEY, DODO_PAYMENTS_WEBHOOK_KEY
 	"vars": {

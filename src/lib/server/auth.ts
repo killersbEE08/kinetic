@@ -3,11 +3,10 @@ import { verifyToken } from "@clerk/nextjs/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { config, env } from "./env";
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string, public code?: string) {
-    super(message);
-  }
-}
+import { HttpError } from "./auth-error";
+import { enforceLimit, type LimitKind } from "./limits";
+
+export { HttpError };
 
 export interface AuthedUser {
   userId: string;
@@ -22,7 +21,7 @@ export interface AuthedUser {
  * We verify in the route handler (not in proxy/middleware) because OpenNext on
  * Cloudflare doesn't run Next 16's Node.js proxy.
  */
-export async function requireUser(req: Request): Promise<AuthedUser> {
+export async function requireUser(req: Request, limit: LimitKind = "read"): Promise<AuthedUser> {
   if (!config.clerkEnabled()) throw new HttpError(503, "Sign-in is not configured on this server.", "auth_disabled");
   if (!config.supabaseEnabled()) throw new HttpError(503, "The database is not configured on this server.", "db_disabled");
 
@@ -30,7 +29,7 @@ export async function requireUser(req: Request): Promise<AuthedUser> {
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!token) throw new HttpError(401, "Sign in to continue.", "unauthenticated");
 
-  const authorizedParties = (env("CLERK_AUTHORIZED_PARTIES") ?? config.appUrl()).split(",").map((s) => s.trim()).filter(Boolean);
+  const authorizedParties = config.authorizedParties();
   let result: Awaited<ReturnType<typeof verifyToken>>;
   try {
     result = await verifyToken(token, {
@@ -57,6 +56,8 @@ export async function requireUser(req: Request): Promise<AuthedUser> {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const email = typeof claims.email === "string" ? claims.email : undefined;
+  // Burst limit per user, checked after the token so anonymous traffic can't use someone's budget.
+  await enforceLimit(limit, claims.sub);
   return { userId: claims.sub, email, token, db };
 }
 
@@ -84,7 +85,11 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
     try {
       return await fn(...args);
     } catch (e) {
-      if (e instanceof HttpError) return json({ error: e.message, code: e.code }, e.status);
+      if (e instanceof HttpError) {
+        const res = json({ error: e.message, code: e.code }, e.status);
+        for (const [k, v] of Object.entries(e.headers ?? {})) res.headers.set(k, v);
+        return res;
+      }
       console.error("[api] unhandled", e);
       return json({ error: "Something went wrong on our side. Try again in a moment.", code: "internal" }, 500);
     }
@@ -109,5 +114,6 @@ export function dbError(error: { message?: string; code?: string } | null, fallb
   const msg = error?.message ?? "";
   if (msg.startsWith("plan_limit:")) throw new HttpError(402, msg.replace("plan_limit: ", ""), "plan_limit");
   if (msg.startsWith("credit_limit:")) throw new HttpError(402, msg.replace("credit_limit: ", ""), "credit_limit");
+  if (msg.startsWith("rate_limit:")) throw new HttpError(429, msg.replace("rate_limit: ", ""), "rate_limited", { "Retry-After": "60" });
   throw new HttpError(500, fallback, "db_error");
 }

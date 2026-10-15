@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AppHeader, ErrorNote, UpgradeNote } from "@/components/ui/chrome";
+import { ErrorNote, UpgradeNote } from "@/components/ui/chrome";
+import { AppShell } from "@/components/app/AppShell";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { AssetThumb, formatBytes, ImportZone } from "@/components/app/assets-ui";
 import { ApiError, useBackend } from "@/lib/client/backend";
@@ -154,8 +155,9 @@ function AssetsInner() {
 export default function AssetsPage() {
   return (
     <RequireUser>
-      <AppHeader />
+      <AppShell>
       <AssetsInner />
+      </AppShell>
     </RequireUser>
   );
 }

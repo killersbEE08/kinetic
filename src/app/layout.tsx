@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Fraunces, Inter, Source_Serif_4, Space_Grotesk } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { CloudBackendProvider, DemoBackendProvider } from "@/lib/client/backend";
+import { ErrorReporter } from "@/lib/client/report";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
@@ -31,6 +32,7 @@ const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 export default function RootLayout({ children }: { children: ReactNode }) {
   const body = (
     <body className="min-h-dvh">
+      <ErrorReporter />
       {clerkKey ? <CloudBackendProvider>{children}</CloudBackendProvider> : <DemoBackendProvider>{children}</DemoBackendProvider>}
     </body>
   );

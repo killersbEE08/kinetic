@@ -20,7 +20,7 @@ const Body = z.object({
 // POST /api/ai/edit — scoped AI edit. Returns a *proposal* (patch ops + summary); nothing is saved
 // until the client accepts and commits it through PATCH /api/decks/:id with author "ai".
 export const POST = handle(async (req: Request) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "ai");
   const body = Body.safeParse(await readJson(req, 2_500_000));
   if (!body.success) throw new HttpError(400, "That request is not valid.", "invalid_input");
   try {

@@ -1,21 +1,46 @@
 "use client";
 
+// Home after sign-in (docs/09). Answers "what do I do now?": start a deck (one box, four ways),
+// continue the last deck, or start from a template.
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { AppHeader, ErrorNote, UpgradeNote } from "@/components/ui/chrome";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Check, ClipboardPaste, FileUp, PenLine, RefreshCw } from "lucide-react";
+import { ErrorNote, UpgradeNote } from "@/components/ui/chrome";
 import { RequireUser } from "@/components/auth/RequireUser";
+import { AppShell } from "@/components/app/AppShell";
 import { SlideView } from "@/components/deck/SlideView";
 import { AssetThumb, formatBytes, ImportZone, kindLabel, LibraryPicker, type ImportedDoc } from "@/components/app/assets-ui";
-import { ApiError, useBackend, type DeckSummary, type Me } from "@/lib/client/backend";
+import { ApiError, useBackend, type DeckSummary } from "@/lib/client/backend";
 import type { AssetMeta } from "@/lib/client/assets";
+import { CreditCost, useMe } from "@/lib/client/me";
 import { saveDraft, type DraftPhoto } from "@/lib/client/draft";
+import { CREDIT_COST } from "@/lib/billing/credits";
 import { DECK_TYPES, type DeckType } from "@/lib/deck/schema";
 import { ASSET_PREFIX } from "@/lib/deck/media";
-import { getTheme, withBrand } from "@/lib/deck/themes";
+import { THEMES, deckTheme, getTheme, withBrand } from "@/lib/deck/themes";
 import { CATEGORIES, CATEGORY_LABEL, TEMPLATES, forkDeck, templateDeck, type TemplateCategory } from "@/lib/deck/templates";
 
 const TYPE_LABEL: Record<DeckType, string> = { pitch: "Pitch", sales: "Sales", launch: "Launch", lesson: "Lesson", report: "Report", custom: "Other" };
+const LANGUAGES = ["English", "Hindi", "Spanish", "French", "German", "Portuguese", "Japanese", "Arabic", "Bengali", "Tamil", "Marathi"];
+const SLIDE_COUNTS = ["auto", 5, 8, 10, 12, 15, 20] as const;
+
+type Mode = "describe" | "paste" | "import" | "redesign";
+const MODES: { id: Mode; label: string; icon: typeof PenLine }[] = [
+  { id: "describe", label: "Describe it", icon: PenLine },
+  { id: "paste", label: "Paste notes", icon: ClipboardPaste },
+  { id: "import", label: "Import files", icon: FileUp },
+  { id: "redesign", label: "Redesign a deck", icon: RefreshCw },
+];
+
+const IDEAS: { label: string; prompt: string; type: DeckType }[] = [
+  { label: "Seed pitch from my memo", prompt: "Seed pitch for investors. Use the numbers in my notes and end with a clear ask.", type: "pitch" },
+  { label: "Sales proposal for a named client", prompt: "Sales proposal for <client name>: their problem in their words, our plan, timeline and price.", type: "sales" },
+  { label: "Lesson from lecture notes", prompt: "A 30-minute lesson with learning goals, two worked examples and a recap.", type: "lesson" },
+  { label: "Quarterly review", prompt: "Quarterly review for the leadership team: results, what went well, what didn't, next quarter's priorities.", type: "report" },
+];
+
+const REDESIGN_PROMPT = "Redesign this deck. Keep every fact, number, quote and photo. Tighten the wording and give each slide one clear point.";
 
 function relTime(iso: string) {
   const d = new Date(iso).getTime();
@@ -24,119 +49,232 @@ function relTime(iso: string) {
   if (s < 60) return "just now";
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  return new Date(iso).toLocaleDateString();
+  if (s < 172800) return "yesterday";
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 const toPhoto = (a: AssetMeta): DraftPhoto => ({ id: a.id, name: a.name, src: ASSET_PREFIX + a.id, alt: a.alt || a.name });
+const wordsOf = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 
-function Meter({ label, value, max, text }: { label: string; value: number; max: number; text: string }) {
-  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+function Select({ label, value, onChange, children }: { label: string; value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
-    <div className="min-w-[150px] flex-1">
-      <div className="flex items-baseline justify-between gap-2 text-[12px]">
-        <span className="font-medium text-ink-2">{label}</span>
-        <span className="tabular text-ink-2">{text}</span>
-      </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)]" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={value}>
-        <div className={`h-full rounded-full ${pct >= 90 ? "bg-warning" : "bg-accent"}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
+    <label className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-line bg-surface pl-2.5 text-[13px] text-ink-2 focus-within:border-accent">
+      {label}
+      <select className="h-full max-w-[180px] cursor-pointer appearance-none truncate bg-transparent pr-2.5 font-medium text-ink outline-none" value={value} onChange={(e) => onChange(e.target.value)}>
+        {children}
+      </select>
+    </label>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function Composer() {
+/** ?mode=import|redesign (from the command palette) opens that tab, including on same-page navigation. */
+function ModeFromUrl({ onMode }: { onMode: (m: Mode) => void }) {
+  const m = useSearchParams().get("mode");
+  useEffect(() => {
+    if (m && MODES.some((x) => x.id === m)) onMode(m as Mode);
+  }, [m, onMode]);
+  return null;
+}
+
+function CreateBox() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("describe");
   const [prompt, setPrompt] = useState("");
+  const [notes, setNotes] = useState("");
   const [type, setType] = useState<DeckType>("pitch");
+  const [slides, setSlides] = useState<string>("auto");
+  const [look, setLook] = useState("theme:mono");
+  const [language, setLanguage] = useState("English");
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [picker, setPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
 
-  const words = docs.reduce((n, d) => n + d.words, 0);
+
   const onImported = useCallback((d: ImportedDoc[], p: AssetMeta[]) => {
+    setError(null);
     setDocs((x) => [...x, ...d.filter((n) => !x.some((o) => o.id === n.id))]);
     setPhotos((x) => [...x, ...p.map(toPhoto).filter((n) => !x.some((o) => o.id === n.id))].slice(0, 24));
   }, []);
 
+  const words = docs.reduce((n, d) => n + d.words, 0) + wordsOf(notes);
+
   function go() {
-    if (!prompt.trim() && !docs.length) {
-      setError("Describe your talk or add a file first.");
+    const p = prompt.trim() || (mode === "redesign" ? REDESIGN_PROMPT : "");
+    if (!p && !notes.trim() && !docs.length) {
+      setError(mode === "redesign" ? "Add the PowerPoint file you want redesigned." : mode === "import" ? "Add a file first, or describe your talk." : "Describe your talk, or add notes or a file.");
       return;
     }
-    saveDraft({ input: { prompt: prompt.trim(), deckType: type }, docs, photos });
+    if (mode === "redesign" && !docs.length) {
+      setError("Add the PowerPoint file you want redesigned.");
+      return;
+    }
+    const [kind, id] = look.split(":");
+    saveDraft({
+      input: { prompt: p, notes: notes.trim(), deckType: mode === "redesign" ? "custom" : type, slideCount: slides === "auto" ? "auto" : Number(slides), language },
+      docs,
+      photos,
+      themeId: kind === "theme" ? id : undefined,
+      look: kind === "tpl" ? id : null,
+      autostart: true,
+    });
     router.push("/new");
   }
 
+  const dropHint =
+    mode === "redesign"
+      ? "We keep the slides' text, numbers, notes and photos, write a fresh outline you can edit, then design it in the look you pick."
+      : "PDF, Word, PowerPoint, Excel, CSV or text. Photos inside them are saved to your library.";
+
   return (
-    <section className="rounded-[14px] border border-line bg-surface p-6 md:p-7" aria-labelledby="compose-h">
-      <h2 id="compose-h" className="text-[20px] font-semibold tracking-[-0.01em]">Start a new deck</h2>
-      <p className="mt-1 text-[14px] text-ink-2">Describe the talk, add your documents and photos. You&rsquo;ll check the outline before any slides are made.</p>
-      <label className="mt-5 block">
-        <span className="sr-only">What are you presenting?</span>
-        <textarea
-          className="field min-h-[96px] resize-y"
-          placeholder="Quarterly results for the leadership team. Use the numbers in the attached spreadsheet."
-          value={prompt}
-          maxLength={4000}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") go();
-          }}
-        />
-      </label>
-
-      <div role="radiogroup" aria-label="Deck type" className="mt-4 flex flex-wrap gap-2">
-        {DECK_TYPES.map((t) => (
-          <button key={t} type="button" role="radio" aria-checked={type === t} onClick={() => setType(t)} className={`h-8 rounded-full border px-3 text-[13px] font-medium ${type === t ? "border-ink bg-ink text-canvas" : "border-line text-ink-2 hover:border-ink-2 hover:text-ink"}`}>
-            {TYPE_LABEL[t]}
-          </button>
-        ))}
+    <section className="rounded-[14px] border border-line bg-surface shadow-[0_1px_2px_rgba(16,17,20,.06),0_4px_12px_rgba(16,17,20,.05)]" aria-label="Create a deck">
+      <div role="tablist" aria-label="How do you want to start?" className="flex gap-1 overflow-x-auto px-3 pt-2.5">
+        {MODES.map((m, i) => {
+          const Icon = m.icon;
+          const on = m.id === mode;
+          return (
+            <button
+              key={m.id}
+              id={`mode-${m.id}`}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              aria-controls="create-panel"
+              tabIndex={on ? 0 : -1}
+              onClick={() => {
+                setMode(m.id);
+                setError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+                const next = MODES[(i + (e.key === "ArrowRight" ? 1 : MODES.length - 1)) % MODES.length];
+                setMode(next.id);
+                document.getElementById(`mode-${next.id}`)?.focus();
+              }}
+              className={`inline-flex flex-none items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-[14px] font-medium ${on ? "border-ink text-ink" : "border-transparent text-ink-2 hover:text-ink"}`}
+            >
+              <Icon size={15} strokeWidth={1.75} aria-hidden="true" />
+              {m.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="mt-5">
-        <ImportZone onImported={onImported} compact />
-      </div>
+      <div id="create-panel" role="tabpanel" aria-labelledby={`mode-${mode}`} className="border-t border-line px-5 pb-5 pt-4" onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && go()}>
+        {mode === "describe" && (
+          <textarea
+            ref={promptRef}
+            aria-label="What are you presenting?"
+            className="min-h-[88px] w-full resize-y bg-transparent text-[17px] leading-[1.5] outline-none placeholder:text-ink-2"
+            placeholder="What are you presenting, and to whom? For example: Q3 results for the leadership team, using the numbers in my spreadsheet."
+            value={prompt}
+            maxLength={4000}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+        )}
+        {mode === "paste" && (
+          <>
+            <input aria-label="What is it for?" className="w-full bg-transparent pb-2 text-[16px] font-medium outline-none placeholder:text-ink-2" placeholder="What is it for? (optional) e.g. Board update, 10 minutes" value={prompt} maxLength={4000} onChange={(e) => setPrompt(e.target.value)} />
+            <textarea
+              aria-label="Your notes"
+              className="field min-h-[180px] resize-y text-[15px]"
+              placeholder="Paste a memo, meeting notes, an outline or data. Leave a blank line between topics. Kinetic only uses facts from here."
+              value={notes}
+              maxLength={400_000}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <p className="tabular mt-1 text-right text-[12px] text-ink-2">{wordsOf(notes).toLocaleString()} words</p>
+          </>
+        )}
+        {(mode === "import" || mode === "redesign") && (
+          <>
+            <ImportZone onImported={onImported}>
+              <span className="text-[15px] font-medium">{mode === "redesign" ? "Drop your PowerPoint (.pptx) here, or " : "Drop files or photos here, or "}<span className="text-accent underline">browse</span></span>
+              <span className="max-w-[560px] text-[13px] text-ink-2">{dropHint}</span>
+            </ImportZone>
+            <input aria-label="Instructions (optional)" className="field mt-3 text-[14px]" placeholder={mode === "redesign" ? "Anything to change? (optional) e.g. Shorter, for investors, 10 slides" : "What is it for? (optional) e.g. Seed pitch for investors"} value={prompt} maxLength={4000} onChange={(e) => setPrompt(e.target.value)} />
+          </>
+        )}
 
-      {(docs.length > 0 || photos.length > 0) && (
-        <div className="mt-4 space-y-3">
-          {docs.length > 0 && (
-            <ul className="flex flex-wrap gap-2" aria-label="Attached files">
-              {docs.map((d) => (
-                <li key={d.id} className="flex items-center gap-2 rounded-[8px] border border-line py-1 pl-3 pr-1 text-[13px]">
-                  <span className="font-medium">{d.name}</span>
-                  <span className="text-ink-2">{kindLabel(d.kind)} · {d.words.toLocaleString()} words</span>
-                  <button type="button" className="btn btn-ghost btn-sm min-h-7 px-2" aria-label={`Remove ${d.name}`} onClick={() => setDocs((x) => x.filter((o) => o.id !== d.id))}>×</button>
-                </li>
-              ))}
-            </ul>
+        {(docs.length > 0 || photos.length > 0) && (
+          <ul className="mt-3 flex flex-wrap gap-2" aria-label="Attached">
+            {docs.map((d) => (
+              <li key={d.id} className="flex h-8 items-center gap-2 rounded-[8px] border border-line bg-canvas pl-2.5 pr-1 text-[12px] text-ink-2" title={d.note}>
+                <b className="max-w-[200px] truncate font-semibold text-ink">{d.name}</b>
+                {kindLabel(d.kind)} · {d.words.toLocaleString()} words
+                <button type="button" className="rounded px-1.5 text-[14px] hover:bg-line" aria-label={`Remove ${d.name}`} onClick={() => setDocs((x) => x.filter((o) => o.id !== d.id))}>×</button>
+              </li>
+            ))}
+            {photos.length > 0 && (
+              <li className="flex h-8 items-center gap-2 rounded-[8px] border border-line bg-canvas pl-1 pr-1 text-[12px] text-ink-2">
+                <span className="flex -space-x-2">
+                  {photos.slice(0, 3).map((p) => <AssetThumb key={p.id} id={p.id} alt="" className="h-6 w-8 rounded-[4px] border border-surface" />)}
+                </span>
+                {photos.length} photo{photos.length > 1 ? "s" : ""}
+                <button type="button" className="rounded px-1.5 text-[14px] hover:bg-line" aria-label="Remove photos" onClick={() => setPhotos([])}>×</button>
+              </li>
+            )}
+          </ul>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {mode !== "redesign" && (
+            <Select label="Type" value={type} onChange={(v) => setType(v as DeckType)}>
+              {DECK_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
+            </Select>
           )}
-          {photos.length > 0 && (
-            <div>
-              <p className="mb-2 text-[13px] text-ink-2">{photos.length} photo{photos.length > 1 ? "s" : ""} will be placed on slides that suit them. The first goes on the title slide.</p>
-              <ul className="flex flex-wrap gap-2" aria-label="Photos for this deck">
-                {photos.map((p) => (
-                  <li key={p.id} className="group relative">
-                    <AssetThumb id={p.id} alt={p.alt} className="h-16 w-24 rounded-[6px]" />
-                    <button type="button" className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface text-[13px] opacity-0 focus:opacity-100 group-hover:opacity-100" aria-label={`Remove ${p.name}`} onClick={() => setPhotos((x) => x.filter((o) => o.id !== p.id))}>×</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          <Select label="Slides" value={slides} onChange={setSlides}>
+            {SLIDE_COUNTS.map((n) => <option key={n} value={String(n)}>{n === "auto" ? "Auto" : n}</option>)}
+          </Select>
+          <Select label="Look" value={look} onChange={setLook}>
+            <optgroup label="Themes">
+              {THEMES.map((t) => <option key={t.id} value={`theme:${t.id}`}>{t.name}</option>)}
+            </optgroup>
+            <optgroup label="Template designs">
+              {TEMPLATES.map((t) => <option key={t.id} value={`tpl:${t.id}`}>{t.brand.name} ({CATEGORY_LABEL[t.category]})</option>)}
+            </optgroup>
+          </Select>
+          <Select label="Language" value={language} onChange={setLanguage}>
+            {LANGUAGES.map((l) => <option key={l}>{l}</option>)}
+          </Select>
+          {mode !== "import" && mode !== "redesign" && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPicker(true)}>{photos.length ? "Add more photos" : "Add photos"}</button>
           )}
+          <span className="ml-auto flex items-center gap-3">
+            {words > 0 && <span className="tabular hidden text-[12px] text-ink-2 sm:inline">{words.toLocaleString()} words</span>}
+            <CreditCost credits={CREDIT_COST.outline} />
+            <button type="button" className="btn btn-primary" onClick={go}>
+              Write the outline
+            </button>
+          </span>
         </div>
-      )}
+        {error && <p className="mt-2 text-[13px] text-danger" role="alert">{error}</p>}
 
-      {error && <p className="mt-3 text-[13px] text-danger" role="alert">{error}</p>}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <button type="button" className="text-[14px] font-medium text-accent hover:underline" onClick={() => setPicker(true)}>Add photos from your library</button>
-        <span className="flex items-center gap-3">
-          {words > 0 && <span className="tabular text-[13px] text-ink-2">{words.toLocaleString()} words from files</span>}
-          <button type="button" className="btn btn-primary" onClick={go}>Write the outline</button>
-        </span>
+        {mode === "describe" && (
+          <div className="mt-3 flex flex-wrap gap-2" aria-label="Examples">
+            {IDEAS.map((i) => (
+              <button
+                key={i.label}
+                type="button"
+                className="rounded-full border border-dashed border-line px-3 py-1 text-[12px] text-ink-2 hover:border-solid hover:border-ink-2 hover:text-ink"
+                onClick={() => {
+                  setPrompt(i.prompt);
+                  setType(i.type);
+                  promptRef.current?.focus();
+                }}
+              >
+                {i.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      <Suspense fallback={null}>
+        <ModeFromUrl onMode={setMode} />
+      </Suspense>
       <LibraryPicker open={picker} onClose={() => setPicker(false)} onPick={(a) => onImported([], a)} title="Photos for this deck" />
     </section>
   );
@@ -144,27 +282,140 @@ function Composer() {
 
 // ---------------------------------------------------------------------------
 
+function Status({ deck }: { deck: DeckSummary }) {
+  const n = deck.suggestedCount ?? 0;
+  if (n > 0) return <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-warning"><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{n} suggested item{n > 1 ? "s" : ""} to check</span>;
+  return <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-success"><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />Ready to present</span>;
+}
+
+function Thumb({ deck, play, className = "" }: { deck: DeckSummary; play?: boolean; className?: string }) {
+  if (!deck.firstSlide) return <div className={`skeleton aspect-video ${className}`} />;
+  return (
+    <div className={`overflow-hidden rounded-[8px] border border-line ${className}`}>
+      <SlideView slide={deck.firstSlide} theme={withBrand(getTheme(deck.themeId), deck.brand)} intensity={deck.motionIntensity} mode={play ? "play" : "static"} step={9} playKey={play ? "on" : "off"} label={`First slide of ${deck.title}`} />
+    </div>
+  );
+}
+
+function Continue({ decks }: { decks: DeckSummary[] }) {
+  const [hover, setHover] = useState(false);
+  const [first, ...rest] = decks;
+  return (
+    <section aria-labelledby="cont-h">
+      <div className="mb-3.5 flex items-baseline justify-between gap-3">
+        <h2 id="cont-h" className="text-[17px] font-semibold tracking-[-0.01em]">Continue where you left off</h2>
+        <Link href="/decks" className="text-[13px] font-medium text-accent hover:underline">All decks ({decks.length})</Link>
+      </div>
+      <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
+        <article className="grid gap-5 rounded-[14px] border border-line bg-surface p-4 sm:grid-cols-[1.1fr_1fr]" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+          <Link href={`/d/${first.id}`} aria-label={`Open ${first.title}`}>
+            <Thumb deck={first} play={hover} />
+          </Link>
+          <div className="flex min-w-0 flex-col gap-2 py-1">
+            <Status deck={first} />
+            <h3 className="text-[18px] font-semibold leading-[1.25] tracking-[-0.01em]">{first.title}</h3>
+            <p className="text-[13px] text-ink-2">{first.slideCount} slides · edited {relTime(first.updatedAt)} · {getTheme(first.themeId).name}</p>
+            <div className="mt-auto flex flex-wrap gap-2 pt-2">
+              <Link href={`/d/${first.id}`} className="btn btn-primary btn-sm">Open editor</Link>
+              <Link href={`/d/${first.id}/present`} className="btn btn-secondary btn-sm">Present</Link>
+              <Link href={`/d/${first.id}?export=1`} className="btn btn-secondary btn-sm">Download</Link>
+            </div>
+          </div>
+        </article>
+        {rest.length > 0 ? (
+          <ul className="flex flex-col gap-1">
+            {rest.slice(0, 3).map((d) => (
+              <li key={d.id}>
+                <Link href={`/d/${d.id}`} className="grid grid-cols-[112px_1fr] items-center gap-3.5 rounded-[10px] border border-transparent p-2 hover:border-line hover:bg-surface">
+                  <Thumb deck={d} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[14px] font-semibold">{d.title}</span>
+                    <span className="block text-[12px] text-ink-2">{d.slideCount} slides · {relTime(d.updatedAt)}</span>
+                    {(d.suggestedCount ?? 0) > 0 && <span className="block text-[12px] text-warning">{d.suggestedCount} to check</span>}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Tips compact />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Tips({ compact = false }: { compact?: boolean }) {
+  return (
+    <aside className={`grid gap-4 ${compact ? "" : "sm:grid-cols-2"}`} aria-label="Tips">
+      <div className="rounded-[14px] border border-line bg-surface p-4">
+        <h3 className="text-[14px] font-semibold">Have an old deck?</h3>
+        <p className="mt-1 text-[13px] leading-[19px] text-ink-2">Use &ldquo;Redesign a deck&rdquo; above. Upload a .pptx and get it back with one clear point per slide, keeping your numbers and photos.</p>
+      </div>
+      <div className="rounded-[14px] border border-line bg-surface p-4">
+        <h3 className="text-[14px] font-semibold">Your photos, on your slides</h3>
+        <p className="mt-1 text-[13px] leading-[19px] text-ink-2">Upload team, product or event photos once. Kinetic places them on slides that suit them, and you can swap any photo in the editor.</p>
+        <Link href="/assets" className="btn btn-secondary btn-sm mt-3">Open photo library</Link>
+      </div>
+    </aside>
+  );
+}
+
+function FirstVisit({ onSample, busy }: { onSample: () => void; busy: boolean }) {
+  const sample = useMemo(() => templateDeck("ledgerly-seed")!, []);
+  const steps = [
+    { done: true, t: "Create your account", d: "Done. Your decks are private until you share or download them." },
+    { done: false, t: "Make your first deck", d: "Describe it above or drop a PDF, Word or PowerPoint file. About two minutes." },
+    { done: false, t: "Download or present it", d: "Editable PowerPoint with animations, a PDF, or present right in the browser." },
+  ];
+  return (
+    <>
+      <ol className="grid gap-3 md:grid-cols-3" aria-label="Getting started">
+        {steps.map((s, i) => (
+          <li key={s.t} className="flex gap-3 rounded-[10px] border border-line bg-surface px-4 py-3.5">
+            <span className={`flex h-6 w-6 flex-none items-center justify-center rounded-full text-[12px] font-semibold ${s.done ? "bg-success text-white" : "border border-line"}`} aria-hidden="true">{s.done ? <Check size={14} strokeWidth={3} /> : i + 1}</span>
+            <span>
+              <span className="block text-[14px] font-semibold">{s.t}<span className="sr-only">{s.done ? " (done)" : ""}</span></span>
+              <span className="mt-0.5 block text-[12px] leading-[17px] text-ink-2">{s.d}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <section className="grid items-center gap-6 rounded-[14px] border border-dashed border-line p-5 md:grid-cols-[1.2fr_1fr]" aria-labelledby="sample-h">
+        <div className="overflow-hidden rounded-[10px] border border-line">
+          <SlideView slide={sample.slides[4]} theme={deckTheme(sample)} intensity="standard" mode="play" step={9} label="Slide from the sample deck" />
+        </div>
+        <div>
+          <h2 id="sample-h" className="text-[17px] font-semibold">No decks yet</h2>
+          <p className="mt-1 text-[14px] leading-[21px] text-ink-2">Open the sample to see how slides build, how AI edits are shown before you accept them, and what the PowerPoint download looks like. It&rsquo;s a {sample.slides.length}-slide pitch for a fictional company.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary btn-sm" onClick={onSample} disabled={busy}>{busy ? "Opening" : "Open the sample deck"}</button>
+            <Link href="/templates" className="btn btn-secondary btn-sm">Browse {TEMPLATES.length} templates</Link>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
 function TemplateRow({ onUse, busy }: { onUse: (id: string) => void; busy: string | null }) {
   const [cat, setCat] = useState<TemplateCategory | "all">("all");
   const [hover, setHover] = useState<string | null>(null);
-  const list = useMemo(() => TEMPLATES.filter((t) => cat === "all" || t.category === cat).slice(0, 8), [cat]);
+  const list = useMemo(() => TEMPLATES.filter((t) => cat === "all" || t.category === cat).slice(0, 4), [cat]);
   return (
     <section aria-labelledby="tpl-h">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 id="tpl-h" className="text-[20px] font-semibold tracking-[-0.01em]">Start from a template</h2>
-          <p className="mt-1 text-[14px] text-ink-2">Copy a sample deck and edit it, or keep only its design and add your own content.</p>
-        </div>
-        <Link href="/templates" className="text-[14px] font-medium text-accent hover:underline">All {TEMPLATES.length} templates</Link>
+      <div className="mb-3.5 flex items-baseline justify-between gap-3">
+        <h2 id="tpl-h" className="text-[17px] font-semibold tracking-[-0.01em]">Start from a template</h2>
+        <Link href="/templates" className="text-[13px] font-medium text-accent hover:underline">All {TEMPLATES.length} templates</Link>
       </div>
-      <div role="tablist" aria-label="Template type" className="mt-4 flex flex-wrap gap-2">
+      <div role="tablist" aria-label="Template type" className="mb-4 flex gap-1.5 overflow-x-auto">
         {(["all", ...CATEGORIES] as const).map((c) => (
-          <button key={c} type="button" role="tab" aria-selected={cat === c} onClick={() => setCat(c)} className={`h-8 rounded-full border px-3 text-[13px] font-medium ${cat === c ? "border-ink bg-ink text-canvas" : "border-line text-ink-2 hover:text-ink"}`}>
+          <button key={c} type="button" role="tab" aria-selected={cat === c} onClick={() => setCat(c)} className={`h-[30px] flex-none whitespace-nowrap rounded-full border px-3 text-[12px] font-medium ${cat === c ? "border-ink bg-ink text-canvas" : "border-line bg-surface text-ink-2 hover:text-ink"}`}>
             {c === "all" ? "All" : CATEGORY_LABEL[c]}
           </button>
         ))}
       </div>
-      <ul className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {list.map((t) => {
           const deck = templateDeck(t.id)!;
           const show = deck.slides[t.highlights?.[0] ?? 0] ?? deck.slides[0];
@@ -175,11 +426,11 @@ function TemplateRow({ onUse, busy }: { onUse: (id: string) => void; busy: strin
                 <SlideView slide={show} theme={withBrand(getTheme(t.themeId), t.brand)} intensity={t.intensity} mode={on ? "play" : "static"} step={9} playKey={on ? "on" : "off"} />
               </Link>
               <div className="border-t border-line p-3">
-                <p className="truncate text-[14px] font-medium">{t.name}</p>
+                <p className="truncate text-[13px] font-semibold">{t.name}</p>
                 <p className="truncate text-[12px] text-ink-2">{CATEGORY_LABEL[t.category]} · {deck.slides.length} slides</p>
-                <div className="mt-3 flex gap-2">
-                  <Link href={`/new?look=${t.id}`} className="btn btn-secondary btn-sm flex-1 px-2">Use design</Link>
-                  <button type="button" className="btn btn-ghost btn-sm flex-1 px-2" disabled={!!busy} onClick={() => onUse(t.id)}>
+                <div className="mt-2.5 flex gap-1.5">
+                  <Link href={`/new?look=${t.id}`} className="btn btn-secondary btn-sm min-h-[30px] flex-1 px-2 text-[12px]">Use design</Link>
+                  <button type="button" className="btn btn-ghost btn-sm min-h-[30px] flex-1 px-2 text-[12px]" disabled={!!busy} onClick={() => onUse(t.id)}>
                     {busy === t.id ? "Copying" : "Copy deck"}
                   </button>
                 </div>
@@ -197,41 +448,27 @@ function TemplateRow({ onUse, busy }: { onUse: (id: string) => void; busy: strin
 function DashboardInner() {
   const backend = useBackend();
   const router = useRouter();
+  const { me } = useMe();
   const [decks, setDecks] = useState<DeckSummary[] | null>(null);
-  const [me, setMe] = useState<Me | null>(null);
   const [assets, setAssets] = useState<AssetMeta[] | null>(null);
-  const [where, setWhere] = useState<"cloud" | "browser">("cloud");
   const [error, setError] = useState<{ text: string; upgrade: boolean } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [hover, setHover] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    setError(null);
-    return Promise.all([backend.listDecks(), backend.me().catch(() => null), backend.listAssets().catch(() => ({ assets: [] as AssetMeta[], where: "browser" as const }))])
-      .then(([list, m, a]) => {
-        setDecks(list);
-        setMe(m);
-        setAssets(a.assets);
-        setWhere(a.where);
-      })
-      .catch((e) => setError({ text: e instanceof ApiError ? e.message : "Could not load your dashboard.", upgrade: false }));
-  }, [backend]);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([backend.listDecks(), backend.me().catch(() => null), backend.listAssets().catch(() => ({ assets: [] as AssetMeta[], where: "browser" as const }))])
-      .then(([list, m, a]) => {
+    Promise.all([backend.listDecks(), backend.listAssets().catch(() => ({ assets: [] as AssetMeta[] }))])
+      .then(([list, a]) => {
         if (cancelled) return;
+        setError(null);
         setDecks(list);
-        setMe(m);
         setAssets(a.assets);
-        setWhere(a.where);
       })
-      .catch((e) => !cancelled && setError({ text: e instanceof ApiError ? e.message : "Could not load your dashboard.", upgrade: false }));
+      .catch((e) => !cancelled && setError({ text: e instanceof ApiError ? e.message : "Could not load your decks.", upgrade: false }));
     return () => {
       cancelled = true;
     };
-  }, [backend]);
+  }, [backend, reload]);
 
   async function copyTemplate(id: string) {
     setBusy(id);
@@ -247,117 +484,61 @@ function DashboardInner() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const recent = (decks ?? []).slice(0, 4);
-  const assetBytes = (assets ?? []).reduce((n, a) => n + a.bytes, 0);
+  const firstVisit = decks !== null && decks.length === 0;
+  const toCheck = (decks ?? []).filter((d) => (d.suggestedCount ?? 0) > 0).length;
+  const atLimit = me?.plan === "free" && me.deckCount >= 3;
+
+  const subline =
+    decks === null
+      ? " "
+      : firstVisit
+        ? "Make your first deck in about two minutes. Start with a sentence, your notes, or a file."
+        : `${decks.length} deck${decks.length === 1 ? "" : "s"}${toCheck ? `, ${toCheck} with suggested items to check` : ""}. Last edited ${relTime(decks[0].updatedAt)}.`;
 
   return (
-    <main className="mx-auto max-w-[1280px] space-y-12 px-6 py-10">
-      <div className="flex flex-wrap items-end justify-between gap-6">
+    <main className="mx-auto flex max-w-[1120px] flex-col gap-9 px-4 py-7 sm:px-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[28px] font-semibold tracking-[-0.02em]">{greeting}</h1>
-          <p className="mt-1 text-[14px] text-ink-2">
-            {backend.mode === "demo" ? "Demo mode: decks and photos are saved in this browser." : me && !me.features.gemini ? "AI is running in offline mode on this server." : "Pick up where you left off, or start something new."}
-          </p>
+          <h1 className="text-[26px] font-semibold tracking-[-0.02em]">{greeting}</h1>
+          <p className="mt-1 min-h-[21px] text-[14px] text-ink-2">{subline}</p>
         </div>
-        {me && (
-          <div className="flex w-full max-w-[560px] flex-wrap gap-6 rounded-[10px] border border-line bg-surface px-4 py-3">
-            {me.plan === "free" ? <Meter label="Decks" value={me.deckCount} max={3} text={`${me.deckCount} of 3`} /> : <Meter label="Decks" value={me.deckCount} max={me.deckCount || 1} text={`${me.deckCount}, unlimited`} />}
-            {me.creditsRemaining !== null && <Meter label="AI credits left" value={me.creditsRemaining} max={{ free: 100, pro: 2000, team: 4000 }[me.plan]} text={me.creditsRemaining.toLocaleString()} />}
-            {me.storage && <Meter label="Photo storage" value={me.storage.usedBytes} max={me.storage.limitBytes} text={`${formatBytes(me.storage.usedBytes)} of ${formatBytes(me.storage.limitBytes)}`} />}
-            <Link href="/pricing" className="self-center text-[13px] font-medium capitalize text-accent hover:underline">{me.plan} plan</Link>
-          </div>
-        )}
+        {me && !me.features.gemini && <p className="rounded-[8px] border border-line px-3 py-1.5 text-[12px] text-ink-2">AI is in offline mode: outlines use your own text only.</p>}
       </div>
 
-      {error && (error.upgrade ? <UpgradeNote message={error.text} /> : <ErrorNote onRetry={load}>{error.text}</ErrorNote>)}
+      {error && (error.upgrade ? <UpgradeNote message={error.text} /> : <ErrorNote onRetry={() => setReload((r) => r + 1)}>{error.text}</ErrorNote>)}
+      {atLimit && <UpgradeNote message="You've used 3 of 3 decks on the Free plan. Your decks stay editable; upgrade to create more." />}
 
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <Composer />
-        <aside className="flex flex-col gap-4 rounded-[14px] border border-line bg-surface p-6" aria-labelledby="how-h">
-          <h2 id="how-h" className="text-[15px] font-semibold">How it works</h2>
-          <ol className="space-y-4 text-[14px]">
-            {[
-              ["Add your material", "A prompt, notes, or files: PDF, Word, PowerPoint, Excel. Photos inside them are kept."],
-              ["Fix the outline", "Reorder, merge or delete slides. Nothing is designed until you agree with the story."],
-              ["Pick a look", "One of 6 themes, or the design of any template, with your logo name."],
-              ["Edit, present, download", "Ask the AI for changes in plain words, present in the browser, or download PowerPoint and PDF."],
-            ].map(([t, d], i) => (
-              <li key={t} className="grid grid-cols-[28px_1fr] gap-2">
-                <span className="tabular flex h-6 w-6 items-center justify-center rounded-full border border-line text-[12px] font-semibold">{i + 1}</span>
-                <span>
-                  <span className="block font-medium">{t}</span>
-                  <span className="block text-[13px] leading-[19px] text-ink-2">{d}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-auto flex flex-wrap gap-2 border-t border-line pt-4">
-            <Link href="/new" className="btn btn-secondary btn-sm">Paste notes instead</Link>
-            <Link href="/assets" className="btn btn-ghost btn-sm">Photo library</Link>
-          </div>
-        </aside>
-      </div>
+      <CreateBox />
 
-      <section aria-labelledby="recent-h">
-        <div className="flex items-end justify-between gap-3">
-          <h2 id="recent-h" className="text-[20px] font-semibold tracking-[-0.01em]">Recent decks</h2>
-          {decks && decks.length > 0 && <Link href="/decks" className="text-[14px] font-medium text-accent hover:underline">All decks ({decks.length})</Link>}
+      {decks === null && !error ? (
+        <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]" aria-busy="true">
+          <div className="skeleton h-[220px] rounded-[14px]" />
+          <div className="flex flex-col gap-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-[64px]" />)}</div>
         </div>
-        {decks === null && !error ? (
-          <ul className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4" aria-busy="true">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <li key={i}><div className="skeleton aspect-video" /><div className="skeleton mt-3 h-4 w-2/3" /></li>
-            ))}
-          </ul>
-        ) : recent.length === 0 ? (
-          <p className="mt-4 rounded-[10px] border border-dashed border-line px-5 py-8 text-center text-[14px] text-ink-2">No decks yet. Start one above, or copy a template below.</p>
-        ) : (
-          <ul className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {recent.map((d) => (
-              <li key={d.id}>
-                <Link href={`/d/${d.id}`} className="block overflow-hidden rounded-[10px] border border-line bg-surface transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]" onMouseEnter={() => setHover(d.id)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(d.id)} onBlur={() => setHover(null)}>
-                  {d.firstSlide ? <SlideView slide={d.firstSlide} theme={withBrand(getTheme(d.themeId), d.brand)} intensity={d.motionIntensity} mode={hover === d.id ? "play" : "static"} step={9} playKey={hover === d.id ? "on" : "off"} label={`First slide of ${d.title}`} /> : <div className="skeleton aspect-video" />}
-                  <div className="border-t border-line px-4 py-3">
-                    <p className="truncate text-[15px] font-medium">{d.title}</p>
-                    <p className="text-[13px] text-ink-2">{d.slideCount} slides · edited {relTime(d.updatedAt)}</p>
-                  </div>
-                </Link>
-                <div className="mt-2 flex gap-3 text-[13px]">
-                  <Link href={`/d/${d.id}`} className="font-medium text-accent hover:underline">Edit</Link>
-                  <Link href={`/d/${d.id}/present`} className="text-ink-2 hover:text-ink">Present</Link>
-                  <Link href={`/d/${d.id}?export=1`} className="text-ink-2 hover:text-ink">Download</Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      ) : firstVisit ? (
+        <FirstVisit onSample={() => copyTemplate("ledgerly-seed")} busy={busy === "ledgerly-seed"} />
+      ) : decks && decks.length > 0 ? (
+        <>
+          <Continue decks={decks} />
+          {decks.length > 1 && <Tips />}
+        </>
+      ) : null}
 
       <TemplateRow onUse={copyTemplate} busy={busy} />
 
-      <section aria-labelledby="photos-h">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <h2 id="photos-h" className="text-[20px] font-semibold tracking-[-0.01em]">Your photos</h2>
-            <p className="mt-1 text-[14px] text-ink-2">
-              {assets ? `${assets.length} photo${assets.length === 1 ? "" : "s"}, ${formatBytes(assetBytes)}` : "Loading"}
-              {where === "browser" && " · saved in this browser only"}
-            </p>
+      {assets && assets.length > 0 && (
+        <section aria-labelledby="photos-h">
+          <div className="mb-3.5 flex items-baseline justify-between gap-3">
+            <h2 id="photos-h" className="text-[17px] font-semibold tracking-[-0.01em]">Your photos <span className="tabular text-[13px] font-normal text-ink-2">{assets.length} · {formatBytes(assets.reduce((n, a) => n + a.bytes, 0))}</span></h2>
+            <Link href="/assets" className="text-[13px] font-medium text-accent hover:underline">Manage photos</Link>
           </div>
-          <Link href="/assets" className="text-[14px] font-medium text-accent hover:underline">Manage photos</Link>
-        </div>
-        {assets && assets.length > 0 ? (
-          <ul className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-8">
+          <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-8">
             {assets.slice(0, 8).map((a) => (
-              <li key={a.id}>
-                <AssetThumb id={a.id} alt={a.alt} className="aspect-[4/3] w-full rounded-[8px]" />
-              </li>
+              <li key={a.id}><AssetThumb id={a.id} alt={a.alt} className="aspect-[4/3] w-full rounded-[8px]" /></li>
             ))}
           </ul>
-        ) : (
-          assets && <p className="mt-4 text-[14px] text-ink-2">Photos you upload, or that we find in your files, appear here and can be placed on any slide.</p>
-        )}
-      </section>
+        </section>
+      )}
     </main>
   );
 }
@@ -365,8 +546,9 @@ function DashboardInner() {
 export default function DashboardPage() {
   return (
     <RequireUser>
-      <AppHeader />
-      <DashboardInner />
+      <AppShell>
+        <DashboardInner />
+      </AppShell>
     </RequireUser>
   );
 }

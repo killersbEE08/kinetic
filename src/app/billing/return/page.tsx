@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AppHeader } from "@/components/ui/chrome";
+import { AppShell } from "@/components/app/AppShell";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { useBackend, type Me } from "@/lib/client/backend";
 
@@ -56,10 +56,11 @@ function ReturnInner() {
 export default function BillingReturnPage() {
   return (
     <RequireUser>
-      <AppHeader />
+      <AppShell>
       <Suspense fallback={null}>
         <ReturnInner />
       </Suspense>
+      </AppShell>
     </RequireUser>
   );
 }

@@ -17,7 +17,7 @@ const Body = z.object({
 // POST /api/ai/generate — outline → deck, streamed as NDJSON so slides appear one by one (PRD GEN-1).
 // Events: {type:"slide", index, slide} … {type:"done", deck, issues, engine} | {type:"error", error}
 export const POST = handle(async (req: Request) => {
-  const user = await requireUser(req);
+  const user = await requireUser(req, "ai");
   await ensureProfile(user);
   const body = Body.safeParse(await readJson(req, 1_500_000));
   if (!body.success) throw new HttpError(400, "The outline is not valid. Go back a step and try again.", "invalid_input");
