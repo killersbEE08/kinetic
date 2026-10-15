@@ -34,6 +34,45 @@ export const Motion = z.object({
 });
 export type Motion = z.infer<typeof Motion>;
 
+// ---------------------------------------------------------------------------
+// Free placement (editor). Coordinates are in slide units: the slide is 1920 × 1080.
+
+/** Elements the user adds by hand use this slot; layouts never define it. */
+export const FREE_SLOT = "free";
+export const SLIDE_W = 1920;
+export const SLIDE_H = 1080;
+
+/** A colour is either a theme role (follows theme changes) or a fixed hex value. */
+export const COLOR_ROLES = ["text", "muted", "accent", "accent2", "bg", "surface", "rule"] as const;
+export const ColorValue = z.string().regex(/^(#[0-9a-fA-F]{6}|text|muted|accent|accent2|bg|surface|rule)$/);
+
+export const Frame = z.object({
+  x: z.number().finite().min(-1920).max(3840),
+  y: z.number().finite().min(-1080).max(2160),
+  w: z.number().finite().min(8).max(3840),
+  h: z.number().finite().min(4).max(2160),
+});
+export type Frame = z.infer<typeof Frame>;
+
+export const ElStyle = z.object({
+  fontSize: z.number().min(8).max(400).optional(),
+  color: ColorValue.optional(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  align: z.enum(["left", "center", "right"]).optional(),
+  valign: z.enum(["top", "middle", "bottom"]).optional(),
+  font: z.enum(["heading", "body"]).optional(),
+  lineHeight: z.number().min(0.8).max(3).optional(),
+  fill: ColorValue.or(z.literal("none")).optional(),
+  stroke: ColorValue.or(z.literal("none")).optional(),
+  strokeWidth: z.number().min(0).max(40).optional(),
+  radius: z.number().min(0).max(540).optional(),
+  opacity: z.number().min(0.05).max(1).optional(),
+  fit: z.enum(["cover", "contain"]).optional(),
+});
+export type ElStyle = z.infer<typeof ElStyle>;
+
 const Base = z.object({
   id: Id,
   slot: z.string().min(1).max(32),
@@ -42,6 +81,10 @@ const Base = z.object({
   source: z.array(z.object({ ref: z.string().max(64), span: z.string().max(500).optional() })).default([]),
   // True when the AI produced content (usually a number) that is not in the user's material.
   aiSuggested: z.boolean().default(false),
+  // Set when the user moved or resized the element by hand. Overrides the layout's position.
+  frame: Frame.optional(),
+  // Look overrides chosen by the user in the editor.
+  style: ElStyle.optional(),
 });
 
 export const TEXT_ROLES = ["h1", "h2", "body", "caption", "quote", "label"] as const;
@@ -101,6 +144,29 @@ export const MockupEl = Base.extend({
 
 export const CHART_KINDS = ["bar", "line", "kpi"] as const;
 
+export const SHAPES = ["rect", "roundRect", "ellipse", "triangle", "diamond", "line", "arrow", "star"] as const;
+export type ShapeKind = (typeof SHAPES)[number];
+
+/** A drawn shape, optionally with text inside. */
+export const ShapeEl = Base.extend({
+  type: z.literal("shape"),
+  shape: z.enum(SHAPES),
+  text: z.string().max(500).default(""),
+});
+
+/** One icon from the built-in line icon set. */
+export const IconEl = Base.extend({
+  type: z.literal("icon"),
+  name: z.enum(ICON_NAMES),
+});
+
+/** A simple table of text. The first row is the header when `header` is true. */
+export const TableEl = Base.extend({
+  type: z.literal("table"),
+  rows: z.array(z.array(z.string().max(200)).min(1).max(8)).min(1).max(12),
+  header: z.boolean().default(true),
+});
+
 export const ChartEl = Base.extend({
   type: z.literal("chart"),
   kind: z.enum(CHART_KINDS),
@@ -116,20 +182,26 @@ export const ChartEl = Base.extend({
   units: z.array(z.string().max(8)).max(24).optional(),
 });
 
-export const Element = z.discriminatedUnion("type", [TextEl, BulletsEl, ChartEl, ImageEl, MockupEl]);
+export const Element = z.discriminatedUnion("type", [TextEl, BulletsEl, ChartEl, ImageEl, MockupEl, ShapeEl, IconEl, TableEl]);
 export type Element = z.infer<typeof Element>;
 export type TextElement = z.infer<typeof TextEl>;
 export type BulletsElement = z.infer<typeof BulletsEl>;
 export type ChartElement = z.infer<typeof ChartEl>;
 export type ImageElement = z.infer<typeof ImageEl>;
 export type MockupElement = z.infer<typeof MockupEl>;
+export type ShapeElement = z.infer<typeof ShapeEl>;
+export type IconElement = z.infer<typeof IconEl>;
+export type TableElement = z.infer<typeof TableEl>;
+
+/** True for elements the user placed by hand (not part of the layout's slots). */
+export const isFree = (el: Pick<Element, "slot">) => el.slot === FREE_SLOT;
 
 export const TRANSITIONS = ["cut", "fade", "push", "morph"] as const;
 
 export const Slide = z.object({
   id: Id,
   layout: z.string().min(1).max(32),
-  elements: z.array(Element).max(20),
+  elements: z.array(Element).max(60),
   transition: z.enum(TRANSITIONS).default("fade"),
   notes: z.string().max(5000).default(""),
 });

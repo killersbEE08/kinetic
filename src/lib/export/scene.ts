@@ -2,7 +2,7 @@
 
 // Turns a rendered slide stage into a flat list of drawable items (boxes, text, pictures,
 // charts) in stage pixels. The PowerPoint exporter turns each item into a native, editable shape.
-import type { ChartElement, Slide } from "@/lib/deck/schema";
+import type { ChartElement, ShapeKind, Slide } from "@/lib/deck/schema";
 
 export interface Box {
   x: number;
@@ -29,6 +29,19 @@ interface Common {
   owner?: Owner;
 }
 
+/** Text drawn inside a shape or a table cell. */
+export interface SceneText {
+  text: string;
+  fontPx: number;
+  color: Rgba;
+  weight: number;
+  italic: boolean;
+  underline: boolean;
+  align: "left" | "center" | "right";
+  valign: "top" | "middle" | "bottom";
+  family: "sans" | "serif" | "grotesk" | "display";
+}
+
 export type SceneItem =
   | (Common & { kind: "rect"; fill?: Rgba; line?: { color: Rgba; width: number }; radius: number; ellipse: boolean })
   | (Common & {
@@ -43,7 +56,10 @@ export type SceneItem =
       family: "sans" | "serif" | "grotesk" | "display";
       align: "left" | "center" | "right";
       nowrap: boolean;
+      underline: boolean;
     })
+  | (Common & { kind: "shape"; shape: ShapeKind; fill?: Rgba; line?: { color: Rgba; width: number }; radius: number; text?: SceneText })
+  | (Common & { kind: "table"; rows: { cells: (SceneText & { fill?: Rgba })[]; h: number }[]; colW: number[]; border: { color: Rgba; width: number } })
   | (Common & { kind: "image"; dataUrl: string; alt: string })
   | (Common & { kind: "chart"; el: ChartElement });
 
@@ -129,6 +145,22 @@ export async function captureScene(stage: HTMLElement, slide: Slide, opts: Captu
     }
     const delayAttr = node.getAttribute("data-delay");
     if (delayAttr && owner) owner = { ...owner, itemDelay: Number(delayAttr) };
+
+    // Shapes and tables become native PowerPoint objects (editable), not drawn pieces.
+    if (elId && node instanceof HTMLElement) {
+      const el = byId.get(elId);
+      if (el?.type === "shape") {
+        items.push(captureShape(node, el.shape, box, opacity, owner));
+        return;
+      }
+      if (el?.type === "table") {
+        const t = captureTable(node, box, opacity, owner);
+        if (t) {
+          items.push(t);
+          return;
+        }
+      }
+    }
 
     if (node instanceof SVGSVGElement) {
       if (chartFor && node.getAttribute("role") === "img") {
@@ -241,6 +273,7 @@ export async function captureScene(stage: HTMLElement, slide: Slide, opts: Captu
           family: family(cs.fontFamily),
           align,
           nowrap: cs.whiteSpace === "nowrap",
+          underline: cs.textDecorationLine.includes("underline"),
           owner,
         });
       }
@@ -257,6 +290,70 @@ export async function captureScene(stage: HTMLElement, slide: Slide, opts: Captu
 }
 
 // ---------------------------------------------------------------------------
+
+function sceneText(node: HTMLElement | null, opacity: number, defaults: { align: SceneText["align"]; valign: SceneText["valign"] }): SceneText | undefined {
+  if (!node) return undefined;
+  const text = (node.innerText ?? "").trim();
+  if (!text) return undefined;
+  const cs = getComputedStyle(node);
+  const c = parseColor(cs.color);
+  const align = cs.textAlign === "center" ? "center" : cs.textAlign === "right" || cs.textAlign === "end" ? "right" : cs.textAlign === "left" || cs.textAlign === "start" ? "left" : defaults.align;
+  const jc = cs.justifyContent;
+  const valign = jc === "center" ? "middle" : jc === "flex-end" || jc === "end" ? "bottom" : jc === "flex-start" || jc === "start" ? "top" : defaults.valign;
+  return { text, fontPx: px(cs.fontSize), color: { ...c, alpha: c.alpha * opacity }, weight: Number(cs.fontWeight) || 400, italic: cs.fontStyle === "italic", underline: cs.textDecorationLine.includes("underline"), align, valign, family: family(cs.fontFamily) };
+}
+
+function captureShape(node: HTMLElement, shape: ShapeKind, box: Box, opacity: number, owner?: Owner): SceneItem {
+  const body = node.querySelector<HTMLElement | SVGSVGElement>("[data-shape-body]");
+  const bcs = body ? getComputedStyle(body) : null;
+  const fade = (c: Rgba): Rgba => ({ ...c, alpha: c.alpha * opacity });
+  let fill: Rgba | undefined;
+  let line: { color: Rgba; width: number } | undefined;
+  let radius = 0;
+  if (bcs && body instanceof SVGSVGElement) {
+    const f = bcs.fill === "none" ? null : parseColor(bcs.fill);
+    if (f && f.alpha > 0) fill = fade(f);
+    const sw = px(bcs.strokeWidth);
+    const s = bcs.stroke === "none" ? null : parseColor(bcs.stroke);
+    if (s && s.alpha > 0 && sw > 0) line = { color: fade(s), width: sw };
+  } else if (bcs) {
+    const f = parseColor(bcs.backgroundColor);
+    if (f.alpha > 0) fill = fade(f);
+    const sw = px(bcs.borderTopWidth);
+    const s = parseColor(bcs.borderTopColor);
+    if (sw > 0 && s.alpha > 0) line = { color: fade(s), width: sw };
+    radius = px(bcs.borderTopLeftRadius);
+  }
+  const text = sceneText(node.querySelector<HTMLElement>("[data-shape-text]"), opacity, { align: "center", valign: "middle" });
+  return { kind: "shape", shape, box, fill, line, radius, text, owner };
+}
+
+function captureTable(node: HTMLElement, box: Box, opacity: number, owner?: Owner): SceneItem | null {
+  const table = node.querySelector("table");
+  if (!table) return null;
+  const trs = Array.from(table.rows);
+  if (!trs.length) return null;
+  const firstCells = Array.from(trs[0].cells);
+  const colW = firstCells.map((td) => td.getBoundingClientRect().width);
+  const scale = box.w && table.getBoundingClientRect().width ? box.w / table.getBoundingClientRect().width : 1;
+  const tdcs = getComputedStyle(firstCells[0]);
+  const rows = trs.map((tr) => {
+    const rowFill = parseColor(getComputedStyle(tr).backgroundColor);
+    return {
+      h: tr.getBoundingClientRect().height * scale,
+      cells: Array.from(tr.cells).map((td) => {
+        const t = sceneText(td, opacity, { align: "left", valign: "middle" });
+        const cs = getComputedStyle(td);
+        const c = parseColor(cs.color);
+        return {
+          ...(t ?? { text: "", fontPx: px(cs.fontSize), color: c, weight: Number(cs.fontWeight) || 400, italic: false, underline: false, align: "left" as const, valign: "middle" as const, family: family(cs.fontFamily) }),
+          fill: rowFill.alpha > 0 ? { ...rowFill, alpha: rowFill.alpha * opacity } : undefined,
+        };
+      }),
+    };
+  });
+  return { kind: "table", box, rows, colW: colW.map((w) => w * scale), border: { color: parseColor(tdcs.borderTopColor), width: px(tdcs.borderTopWidth) }, owner };
+}
 
 const SVG_PROPS = ["fill", "stroke", "stroke-width", "stroke-opacity", "fill-opacity", "opacity", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-dashoffset", "font-size", "font-weight", "font-family", "text-anchor", "color", "visibility"] as const;
 

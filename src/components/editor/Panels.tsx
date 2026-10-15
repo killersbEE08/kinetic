@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ChartElement, Deck, Element, Motion, Slide } from "@/lib/deck/schema";
+import type { ChartElement, Deck, Element, Frame, Motion, ShapeKind, Slide } from "@/lib/deck/schema";
+import { ElementPanel } from "./ElementPanel";
 import { EASINGS, MOTION_PRESETS, TRANSITIONS, TRIGGERS } from "@/lib/deck/schema";
 import type { PatchOp } from "@/lib/deck/patch";
 import { LAYOUTS, getLayout } from "@/lib/deck/layouts";
@@ -34,11 +35,20 @@ const TRIGGER_LABEL: Record<Motion["trigger"], string> = { onClick: "On click", 
 const EASING_LABEL: Record<Motion["easing"], string> = { standard: "Standard", emphasized: "Emphasized", decelerate: "Decelerate", springSoft: "Spring (soft)", springSnappy: "Spring (snappy)" };
 const TRANSITION_LABEL: Record<Slide["transition"], string> = { cut: "Cut", fade: "Fade", push: "Push", morph: "Morph" };
 
+export const SHAPE_LABEL: Record<ShapeKind, string> = { rect: "Rectangle", roundRect: "Rounded rectangle", ellipse: "Ellipse", triangle: "Triangle", diamond: "Diamond", line: "Line", arrow: "Arrow", star: "Star" };
+
 export function elementLabel(el: Element): string {
+  if (el.slot === "free" && el.type === "text") return `Text: ${el.content.slice(0, 32)}${el.content.length > 32 ? "?" : ""}`;
+  if (el.slot === "free" && el.type === "image") return "Photo";
+  if (el.slot === "free" && el.type === "chart") return el.kind === "kpi" ? "Big number" : `${el.kind === "bar" ? "Bar" : "Line"} chart`;
+  if (el.slot === "free" && el.type === "bullets") return `List: ${el.items.length} points`;
   if (el.type === "text") return `${el.slot}: ${el.content.slice(0, 32)}${el.content.length > 32 ? "…" : ""}`;
   if (el.type === "bullets") return `${el.slot}: ${el.items.length} points`;
   if (el.type === "image") return `${el.slot}: photo`;
   if (el.type === "mockup") return `${el.slot}: ${el.device} screen`;
+  if (el.type === "shape") return `Shape: ${el.text ? el.text.slice(0, 24) : SHAPE_LABEL[el.shape]}`;
+  if (el.type === "icon") return `Icon: ${el.name}`;
+  if (el.type === "table") return `Table: ${el.rows.length} ? ${el.rows[0]?.length ?? 0}`;
   return `${el.slot}: ${el.kind === "kpi" ? "numbers" : `${el.kind} chart`}`;
 }
 
@@ -53,7 +63,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ---------------------------------------------------------------------------
 
-export function DesignPanel({ deck, slideIndex, selected, commit }: { deck: Deck; slideIndex: number; selected: Element | null; commit: Commit }) {
+export function DesignPanel({ deck, slideIndex, selected, commit, frame = null, onSelect }: { deck: Deck; slideIndex: number; selected: Element | null; commit: Commit; frame?: Frame | null; onSelect?: (id: string | null) => void }) {
   const slide = deck.slides[slideIndex];
   const [title, setTitle] = useState(deck.title);
   // Re-sync the draft when the title changes elsewhere (undo, AI edit).
@@ -63,6 +73,29 @@ export function DesignPanel({ deck, slideIndex, selected, commit }: { deck: Deck
     setTitle(deck.title);
   }
   const ei = selected ? slide.elements.findIndex((e) => e.id === selected.id) : -1;
+
+  if (selected && ei >= 0) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="min-w-0 truncate text-[13px] font-semibold">{elementLabel(selected)}</h3>
+          <button type="button" className="btn btn-ghost btn-sm min-h-7 px-2 text-[12px]" onClick={() => onSelect?.(null)}>Slide settings</button>
+        </div>
+        <ElementPanel deck={deck} slideIndex={slideIndex} el={selected} frame={frame} commit={commit} onSelect={(id) => onSelect?.(id)} />
+        {selected.type === "chart" && <ChartEditor el={selected} path={`/slides/${slideIndex}/elements/${ei}`} commit={commit} />}
+        {selected.type === "image" && <PhotoPicker el={selected} path={`/slides/${slideIndex}/elements/${ei}`} commit={commit} />}
+        {selected.type === "mockup" && <p className="rounded-[10px] border border-line p-3 text-[13px] text-ink-2">Product screens are edited by asking for a change in the Ask tab, for example &ldquo;rename the first row to Invoices&rdquo;.</p>}
+        {selected.aiSuggested && (
+          <div className="rounded-[10px] border border-dashed border-accent p-3 text-[13px]">
+            <p>This element contains something that isn&rsquo;t in your notes{selected.type === "chart" ? " (or still has sample numbers)" : ""}.</p>
+            <button type="button" className="btn btn-secondary btn-sm mt-2" onClick={() => commit([{ op: "replace", path: `/slides/${slideIndex}/elements/${ei}/aiSuggested`, value: false }], { label: "Mark as checked" })}>
+              I checked it, remove the label
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -142,7 +175,7 @@ export function DesignPanel({ deck, slideIndex, selected, commit }: { deck: Deck
 }
 
 /** Uploaded photos plus the built-in library, as one grid. Used to swap or add a photo. */
-function PhotoChooser({ value, onChoose }: { value?: string; onChoose: (p: PhotoRef) => void }) {
+export function PhotoChooser({ value, onChoose }: { value?: string; onChoose: (p: PhotoRef) => void }) {
   const backend = useBackend();
   const [uploads, setUploads] = useState<AssetMeta[] | null>(null);
   useEffect(() => {

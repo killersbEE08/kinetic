@@ -2,7 +2,7 @@
 // The AI never writes ids, motion, or arbitrary structure — the server compiles those,
 // which keeps output valid and makes layout invention impossible.
 import { z } from "zod";
-import { CHART_KINDS, Screen, type Element, type Slide } from "./schema";
+import { CHART_KINDS, isFree, Screen, type Element, type Slide } from "./schema";
 import { getLayout, LAYOUT_IDS } from "./layouts";
 import { ICON_NAMES } from "./icons";
 import { MEDIA_SRC_RX } from "./media";
@@ -53,6 +53,9 @@ export function composeSlide(input: SlottedSlide, existing?: Slide): Slide {
       motion: keep?.motion,
       source: keep?.source ?? [],
       aiSuggested: c.suggested ?? false,
+      // A hand-placed position and look survive content rewrites.
+      ...(keep?.frame ? { frame: keep.frame } : {}),
+      ...(keep?.style ? { style: keep.style } : {}),
     };
 
     if (def.accepts === "text") {
@@ -78,6 +81,9 @@ export function composeSlide(input: SlottedSlide, existing?: Slide): Slide {
     }
   }
 
+  // Boxes the user added by hand are not part of the layout; keep them as they are.
+  if (existing) elements.push(...existing.elements.filter(isFree));
+
   return {
     id: existing?.id ?? newId("sl"),
     layout: layoutId,
@@ -101,12 +107,18 @@ export function elementToSlot(el: Element): SlotContent {
       return { ...base, image: { src: el.src, alt: el.alt, focal: el.focal } };
     case "mockup":
       return { ...base, mockup: { device: el.device, url: el.url, screen: el.screen } };
+    case "shape":
+      return { ...base, text: el.text };
+    case "icon":
+      return { ...base };
+    case "table":
+      return { ...base, text: el.rows.map((r) => r.join(" | ")).join("\n") };
   }
 }
 
 /** Reverse of composeSlide: used to give the AI the current content of a slide. */
 export function toSlotted(slide: Slide): SlottedSlide {
-  return { layout: slide.layout, notes: slide.notes, slots: slide.elements.map(elementToSlot) };
+  return { layout: slide.layout, notes: slide.notes, slots: slide.elements.filter((e) => !isFree(e)).map(elementToSlot) };
 }
 
 /**
@@ -116,7 +128,7 @@ export function toSlotted(slide: Slide): SlottedSlide {
  */
 export function swapLayout(slide: Slide, layoutId: string): Slide {
   const target = getLayout(layoutId);
-  const pool = [...slide.elements];
+  const pool = slide.elements.filter((e) => !isFree(e));
   const take = (pred: (e: Element) => boolean) => {
     const i = pool.findIndex(pred);
     return i === -1 ? undefined : pool.splice(i, 1)[0];
@@ -161,6 +173,6 @@ export function swapLayout(slide: Slide, layoutId: string): Slide {
   const notes = [slide.notes, ...leftovers].filter(Boolean).join("\n\n");
 
   // Reuse ids by slot name only when the element type matches (handled in composeSlide).
-  const next = composeSlide({ layout: layoutId, slots, notes }, { ...slide, elements: [] });
+  const next = composeSlide({ layout: layoutId, slots, notes }, { ...slide, elements: slide.elements.filter(isFree) });
   return { ...next, id: slide.id, transition: slide.transition };
 }

@@ -191,6 +191,33 @@ h3 {
   font-size: 36px;
   line-height: 1.4;
 }
+/* Free layer (hand-placed elements) */
+.k-free-text {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.k-stage .k-hfont {
+  font-family: var(--font-sans);
+  font-weight: var(--k-hw);
+  letter-spacing: var(--k-track);
+}
+.k-stage[data-heading="serif"] .k-hfont {
+  font-family: var(--font-serif);
+}
+.k-stage[data-heading="grotesk"] .k-hfont {
+  font-family: var(--font-grotesk), var(--font-sans);
+}
+.k-stage[data-heading="display"] .k-hfont {
+  font-family: var(--font-display), var(--font-serif);
+}
+.k-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  line-height: 1.3;
+}
 .k-h1-sm {
   font-size: 72px;
 }

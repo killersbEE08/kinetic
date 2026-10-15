@@ -7,6 +7,9 @@ import { ExportDialog } from "@/components/app/ExportDialog";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { AccountArea, ErrorNote } from "@/components/ui/chrome";
 import { SlideView } from "@/components/deck/SlideView";
+import { CanvasEditor } from "@/components/editor/CanvasEditor";
+import { InsertBar } from "@/components/editor/InsertBar";
+import { composeSlide } from "@/lib/deck/compose";
 import { useDeckEditor } from "@/components/editor/useDeckEditor";
 import { DesignPanel, MotionPanel } from "@/components/editor/Panels";
 import { AskPanel, type Proposal } from "@/components/editor/AskPanel";
@@ -15,7 +18,7 @@ import { deckTheme, getTheme } from "@/lib/deck/themes";
 import { stepCount } from "@/lib/deck/motion";
 import { applyDeckPatch, type PatchOp } from "@/lib/deck/patch";
 import { newId } from "@/lib/deck/ids";
-import type { Deck, Slide } from "@/lib/deck/schema";
+import type { Deck, Frame, Slide } from "@/lib/deck/schema";
 
 type Tab = "design" | "motion" | "ask";
 
@@ -30,6 +33,7 @@ function Editor({ id }: { id: string }) {
   const [rev, setRev] = useState(0);
   const [rawSlideIndex, setSlideIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectionFrame, setSelectionFrame] = useState<Frame | null>(null);
   const [tab, setTab] = useState<Tab>("design");
   const [playKey, setPlayKey] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -165,6 +169,11 @@ function Editor({ id }: { id: string }) {
     if (ops.length) commit(ops, { label: "Edit point" });
   };
 
+  const addBlank = () => {
+    commit([{ op: "add", path: `/slides/${si + 1}`, value: composeSlide({ layout: "blank", slots: [] }) }], { label: "Add blank slide" });
+    setSlideIndex(si + 1);
+    setSelectedId(null);
+  };
   const addSlide = () => {
     commit([{ op: "add", path: `/slides/${si + 1}`, value: blankSlide() }], { label: "Add slide" });
     setSlideIndex(si + 1);
@@ -275,31 +284,57 @@ function Editor({ id }: { id: string }) {
               );
             })}
           </ol>
-          <button type="button" className="btn btn-secondary btn-sm mt-4 w-full" onClick={addSlide} disabled={!!pending}>Add slide</button>
+          <div className="mt-4 grid grid-cols-2 gap-1.5">
+            <button type="button" className="btn btn-secondary btn-sm px-2" onClick={addSlide} disabled={!!pending}>Add slide</button>
+            <button type="button" className="btn btn-secondary btn-sm px-2" onClick={addBlank} disabled={!!pending} title="An empty slide for placing text, photos and shapes yourself">Blank</button>
+          </div>
         </nav>
 
         {/* Canvas */}
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-[color-mix(in_srgb,var(--ink)_4%,var(--canvas))]">
-          <div className="mx-auto w-full max-w-[1100px] flex-1 px-8 py-8">
+          <div className="mx-auto w-full max-w-[1100px] flex-1 px-8 py-6">
+            {editable && !playing && (
+              <div className="mb-4">
+                <InsertBar
+                  count={slide.elements.filter((e) => e.frame).length}
+                  onInsert={(el, label) => {
+                    if (slide.elements.length >= 60) {
+                      setNotice("A slide can hold up to 60 elements. Delete some, or add a new slide.");
+                      return;
+                    }
+                    if (commit([{ op: "add", path: `/slides/${si}/elements/-`, value: el }], { label })) {
+                      setSelectedId(el.id);
+                      setTab("design");
+                    }
+                  }}
+                />
+              </div>
+            )}
             <div className={`relative rounded-[8px] ${pending && pending.changedSlideIds.includes(slide.id) ? "outline-[3px] outline-dashed outline-offset-8 outline-accent" : ""}`}>
               {pending && pending.changedSlideIds.includes(slide.id) && (
                 <span className="absolute -top-9 right-0 rounded-[6px] bg-accent px-2 py-1 text-[12px] font-medium text-white">Suggested</span>
               )}
-              <div className="overflow-hidden rounded-[8px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-                <SlideView
+              <div className="rounded-[8px] shadow-[0_4px_12px_rgba(0,0,0,0.08)] [&_[data-canvas]>div:first-child]:rounded-[8px]">
+                <CanvasEditor
+                  deck={deck}
+                  slideIndex={si}
                   slide={slide}
                   theme={theme}
                   intensity={shown.motionIntensity}
-                  mode={playing ? "play" : "static"}
+                  editable={editable}
+                  playing={playing}
                   step={step}
                   playKey={`${slide.id}-${playKey}`}
-                  editable={editable && !playing}
                   page={slideIndex + 1}
-                  showSuggested
                   selectedId={selectedId}
-                  onSelect={setSelectedId}
+                  onSelect={(id) => {
+                    setSelectedId(id);
+                    if (id) setTab((t) => (t === "ask" ? t : "design"));
+                  }}
+                  commit={commit}
                   onEditText={editText}
                   onEditItem={editItem}
+                  onSelectionFrame={setSelectionFrame}
                   label={`Slide ${slideIndex + 1} canvas`}
                 />
               </div>
@@ -330,7 +365,7 @@ function Editor({ id }: { id: string }) {
                   ))}
                 </div>
               )}
-              <p className="text-[12px] text-ink-2">{editable ? "Click text to edit it. Click an element to select it." : pending ? "Accept or discard the suggestion to keep editing." : ""}</p>
+              <p className="text-[12px] text-ink-2">{editable ? "Click to select, click again to type, drag to move. Arrows nudge, Delete removes, Ctrl D duplicates." : pending ? "Accept or discard the suggestion to keep editing." : ""}</p>
             </div>
           </div>
 
@@ -358,7 +393,7 @@ function Editor({ id }: { id: string }) {
           </div>
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto p-4">
             {tab === "design" &&
-              (editable ? <DesignPanel deck={deck} slideIndex={si} selected={selected} commit={commit} /> : <p className="text-[13px] text-ink-2">Accept or discard the suggestion first.</p>)}
+              (editable ? <DesignPanel deck={deck} slideIndex={si} selected={selected} commit={commit} frame={selectionFrame} onSelect={setSelectedId} /> : <p className="text-[13px] text-ink-2">Accept or discard the suggestion first.</p>)}
             {tab === "motion" &&
               (editable ? (
                 <MotionPanel deck={deck} slideIndex={si} selectedId={selectedId} onSelect={setSelectedId} commit={commit} onPreview={play} />

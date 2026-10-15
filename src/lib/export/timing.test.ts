@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { injectSlideXml, shapeIds, timingXml, transitionXml, type Effect } from "./timing";
+import { injectSlideXml, shapeIds, timingXml, transitionXml, uniqueShapeIds, type Effect } from "./timing";
 
 /** Minimal well-formedness check: every tag closes in order (no XML parser in the node test env). */
 function balanced(xml: string): boolean {
@@ -70,5 +70,13 @@ describe("PowerPoint timing XML", () => {
     expect(out.indexOf("<p:timing>")).toBeGreaterThan(out.indexOf("<p:transition"));
     expect(out.endsWith("</p:sld>")).toBe(true);
     expect(balanced(out)).toBe(true);
+  });
+
+  it("renumbers duplicate shape ids (pptxgenjs tables can collide with other shapes)", () => {
+    const xml = '<p:cNvPr id="1" name=""/><p:cNvPr id="2" name="k1"/><p:cNvPr id="3" name="k2"/><p:cNvPr id="2" name="k3"/>';
+    const out = uniqueShapeIds(xml);
+    const ids = [...out.matchAll(/<p:cNvPr id="(\d+)"/g)].map((m) => m[1]);
+    expect(ids).toEqual(["1", "2", "3", "4"]);
+    expect(shapeIds(out).get("k3")).toBe(4);
   });
 });

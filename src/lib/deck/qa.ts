@@ -1,6 +1,6 @@
 // Automated "no slop" quality gates (PRD §9). Runs on every generated or AI-edited deck.
 // Fixes what can be fixed safely and reports the rest.
-import type { Deck, Element, Slide } from "./schema";
+import { isFree, type Deck, type Element, type Slide } from "./schema";
 import { getLayout, LAYOUT_IDS } from "./layouts";
 import { findBanned, softenCopy } from "./banned";
 import { countAnimatedBuilds, INTENSITY_RULES } from "./motion";
@@ -55,6 +55,9 @@ export function elementText(el: Element): string {
     const s = el.screen;
     return [s.app, s.heading, s.kpi?.label, s.kpi?.value, s.cta, s.chartLabel, ...s.rows.flatMap((r) => [r.label, r.sub, r.value, r.tag])].filter(Boolean).join(" ");
   }
+  if (el.type === "shape") return el.text;
+  if (el.type === "icon") return "";
+  if (el.type === "table") return el.rows.flat().join(" ");
   return [...el.data.labels, ...el.data.series.flatMap((s) => [s.name, ...s.values.map(String)])].join(" ");
 }
 
@@ -78,6 +81,11 @@ export function runQa(deck: Deck, sourceText?: string): { deck: Deck; issues: Qa
     const overflow: string[] = [];
 
     for (const el of slide.elements) {
+      // Boxes the user placed by hand: keep their wording as typed (only soften banned copy).
+      if (isFree(el)) {
+        if (el.type === "text") el.content = softenCopy(el.content);
+        continue;
+      }
       const slot = layout.slots[el.slot];
       if (!slot) {
         issues.push({ slideIndex: si, rule: "slot", message: `Element in unknown slot "${el.slot}"`, fixed: false });

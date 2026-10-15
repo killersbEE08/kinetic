@@ -141,3 +141,23 @@ export function shapeIds(slideXml: string): Map<string, number> {
   for (const m of slideXml.matchAll(/<p:cNvPr id="(\d+)" name="([^"]*)"/g)) out.set(m[2], Number(m[1]));
   return out;
 }
+
+/**
+ * pptxgenjs numbers tables differently from other objects, which can give two shapes the same id
+ * (PowerPoint then offers to repair the file). Renumber duplicates before animations are attached.
+ */
+export function uniqueShapeIds(xml: string): string {
+  const seen = new Set<number>();
+  let max = 1;
+  for (const m of xml.matchAll(/<p:cNvPr id="(\d+)"/g)) max = Math.max(max, Number(m[1]));
+  return xml.replace(/<p:cNvPr id="(\d+)"/g, (whole, n) => {
+    const id = Number(n);
+    if (id === 1 || !seen.has(id)) {
+      seen.add(id);
+      return whole;
+    }
+    max += 1;
+    seen.add(max);
+    return `<p:cNvPr id="${max}"`;
+  });
+}

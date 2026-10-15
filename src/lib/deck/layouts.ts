@@ -292,6 +292,15 @@ export const LAYOUTS: LayoutDef[] = [
     },
     defaultMotion: { title: mask(0), body: fade(1), contact: fade(2) },
   },
+  {
+    id: "blank",
+    name: "Blank",
+    category: "Structure",
+    description: "An empty slide for placing text, photos and shapes by hand.",
+    ai: false,
+    slots: {},
+    defaultMotion: {},
+  },
 ];
 
 export const LAYOUT_IDS = LAYOUTS.map((l) => l.id);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { BulletsElement, ChartElement, Element, ImageElement, Intensity, Slide } from "@/lib/deck/schema";
+import type { BulletsElement, ChartElement, ElStyle, Element, IconElement, ImageElement, Intensity, ShapeElement, Slide, TableElement } from "@/lib/deck/schema";
 import { resolveTimeline, type ResolvedMotion } from "@/lib/deck/motion";
 import { splitItem } from "@/lib/deck/layouts";
 import type { Theme } from "@/lib/deck/themes";
@@ -27,6 +27,10 @@ export interface SlideViewProps {
   onSelect?: (elementId: string | null) => void;
   onEditText?: (elementId: string, value: string) => void;
   onEditItem?: (elementId: string, index: number, value: string) => void;
+  /** Edits a field of an element: "text" (shapes) or "rows/<r>/<c>" (tables). */
+  onEditField?: (elementId: string, field: string, value: string) => void;
+  /** Element whose text is being typed into (others are select-only). */
+  editingId?: string | null;
   className?: string;
   label?: string;
   /** Slide number for the footer (content slides only). */
@@ -63,7 +67,7 @@ export function SlideView(props: SlideViewProps) {
   );
 }
 
-export function SlideStage({ slide, theme, intensity, mode, step = 0, playKey, editable, showSuggested, selectedId, onSelect, onEditText, onEditItem, scale, page, morphNames }: SlideViewProps & { scale: number }) {
+export function SlideStage({ slide, theme, intensity, mode, step = 0, playKey, editable, showSuggested, selectedId, onSelect, onEditText, onEditItem, onEditField, editingId, scale, page, morphNames }: SlideViewProps & { scale: number }) {
   const timeline = resolveTimeline(slide, intensity);
   const c = theme.colors;
   const style = {
@@ -81,7 +85,7 @@ export function SlideStage({ slide, theme, intensity, mode, step = 0, playKey, e
     "--k-case": theme.headingCase,
   } as CSSProperties;
 
-  const ctx: RenderCtx = { slide, theme, timeline, mode, step, scale, editable: !!editable, showSuggested: !!showSuggested, selectedId: selectedId ?? null, onSelect, onEditText, onEditItem, morph: !!morphNames };
+  const ctx: RenderCtx = { slide, theme, timeline, mode, step, scale, editable: !!editable, showSuggested: !!showSuggested, selectedId: selectedId ?? null, onSelect, onEditText, onEditItem, onEditField, editingId: editingId ?? null, morph: !!morphNames };
 
   return (
     <div key={playKey} className={"k-stage" + (editable ? " k-editable" : "")} data-heading={theme.headingFont} style={style} onClick={editable ? () => onSelect?.(null) : undefined}>
@@ -105,6 +109,8 @@ interface RenderCtx {
   onSelect?: (id: string | null) => void;
   onEditText?: (id: string, v: string) => void;
   onEditItem?: (id: string, i: number, v: string) => void;
+  onEditField?: (id: string, field: string, v: string) => void;
+  editingId: string | null;
   morph: boolean;
 }
 
@@ -121,7 +127,7 @@ function LayoutBody({ ctx, page }: { ctx: RenderCtx; page?: number }) {
   const playing = ctx.mode === "play";
   const E = (slot: string, cls = "", extra?: { big?: boolean; variant?: Variant; frac?: number }) => {
     const el = bySlot(s, slot);
-    return el ? <ElementNode key={el.id} el={el} ctx={ctx} className={cls} big={extra?.big} variant={extra?.variant} frac={extra?.frac} /> : null;
+    return el && !el.frame ? <ElementNode key={el.id} el={el} ctx={ctx} className={cls} big={extra?.big} variant={extra?.variant} frac={extra?.frac} /> : null;
   };
   const pad = "absolute inset-0 px-[120px] py-[110px]";
   // Split slides keep the footer on the text half so it never sits on the photo.
@@ -339,10 +345,13 @@ function LayoutBody({ ctx, page }: { ctx: RenderCtx; page?: number }) {
         </>
       );
       break;
+    case "blank":
+      body = null;
+      break;
     default:
       body = (
         <div className={pad + " flex flex-col gap-10"}>
-          {s.elements.map((el) => (
+          {s.elements.filter((el) => !el.frame).map((el) => (
             <ElementNode key={el.id} el={el} ctx={ctx} />
           ))}
         </div>
@@ -352,6 +361,74 @@ function LayoutBody({ ctx, page }: { ctx: RenderCtx; page?: number }) {
     <>
       {body}
       {!FULL_BLEED.has(s.layout) && footer}
+      <FreeLayer ctx={ctx} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Free layer: elements the user added or moved by hand, positioned in slide units.
+
+const VARIANT_BY_SLOT: Record<string, Variant> = { "iconGrid.grid": "grid", "process.steps": "steps", "timeline.milestones": "timeline", "team.people": "team", "product.callouts": "callouts" };
+const ROLE_CLASS: Record<string, string> = { h1: "k-h k-h1", h2: "k-h k-h2", body: "k-body", caption: "k-caption", quote: "k-quote", label: "k-label" };
+const BIG_NUMBER_SLOTS = new Set(["bigNumber.number", "chartFocus.number"]);
+
+/** CSS colour for a stored colour (theme role or hex). */
+export function cssColor(c?: string): string | undefined {
+  if (!c) return undefined;
+  if (c === "none") return "transparent";
+  return c.startsWith("#") ? c : `var(--k-${c})`;
+}
+
+function textCss(st?: ElStyle): CSSProperties {
+  if (!st) return {};
+  return {
+    fontSize: st.fontSize,
+    color: cssColor(st.color),
+    fontWeight: st.bold === undefined ? undefined : st.bold ? 700 : 400,
+    fontStyle: st.italic ? "italic" : undefined,
+    textDecoration: st.underline ? "underline" : undefined,
+    textAlign: st.align,
+    lineHeight: st.lineHeight,
+    fontFamily: st.font === "body" ? "var(--font-sans)" : undefined,
+  };
+}
+
+const VALIGN = { top: "flex-start", middle: "center", bottom: "flex-end" } as const;
+const isKpiSingle = (el: Element) => el.type === "chart" && el.kind === "kpi" && el.data.series[0]?.values.length === 1;
+
+function FreeLayer({ ctx }: { ctx: RenderCtx }) {
+  const framed = ctx.slide.elements.filter((e) => e.frame);
+  if (!framed.length) return null;
+  return (
+    <>
+      {framed.map((el) => {
+        const f = el.frame!;
+        const st = el.style;
+        const key = `${ctx.slide.layout}.${el.slot}`;
+        const clip = el.type === "image";
+        return (
+          <div
+            key={el.id}
+            className="k-free"
+            style={{
+              position: "absolute",
+              left: f.x,
+              top: f.y,
+              width: f.w,
+              height: f.h,
+              opacity: st?.opacity,
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: el.type === "text" ? VALIGN[st?.valign ?? "top"] : "stretch",
+              borderRadius: clip ? st?.radius : undefined,
+              overflow: clip ? "hidden" : undefined,
+            }}
+          >
+            <ElementNode el={el} ctx={ctx} free className={el.type === "text" ? `${ROLE_CLASS[el.role] ?? "k-body"} k-free-text ${st?.font === "heading" ? "k-hfont" : ""}` : "h-full w-full"} variant={VARIANT_BY_SLOT[key]} big={BIG_NUMBER_SLOTS.has(key) || (isKpiSingle(el) && f.h > 200)} />
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -366,7 +443,7 @@ function animState(ctx: RenderCtx, m: ResolvedMotion | undefined): { cls: string
   };
 }
 
-function ElementNode({ el, ctx, className = "", big, variant, frac = 1 }: { el: Element; ctx: RenderCtx; className?: string; big?: boolean; variant?: Variant; frac?: number }) {
+function ElementNode({ el, ctx, className = "", big, variant, frac = 1, free = false }: { el: Element; ctx: RenderCtx; className?: string; big?: boolean; variant?: Variant; frac?: number; free?: boolean }) {
   const m = ctx.timeline.get(el.id);
   const a = animState(ctx, m);
   const selected = ctx.selectedId === el.id;
@@ -379,6 +456,7 @@ function ElementNode({ el, ctx, className = "", big, variant, frac = 1 }: { el: 
       }
     : undefined;
   const tag = suggested ? <span className="k-suggested-tag">Suggested</span> : null;
+  const editing = ctx.editable && ctx.editingId === el.id;
 
   if (el.type === "text") {
     let inner: ReactNode;
@@ -395,14 +473,14 @@ function ElementNode({ el, ctx, className = "", big, variant, frac = 1 }: { el: 
         ),
       );
     } else if (ctx.editable) {
-      inner = <EditableText value={el.content} onCommit={(v) => ctx.onEditText?.(el.id, v)} label={`${el.slot} text`} />;
+      inner = <EditableText value={el.content} editing={editing} multiline={free} onCommit={(v) => ctx.onEditText?.(el.id, v)} label={`${el.slot} text`} />;
     } else {
       inner = el.content;
     }
     const Tag = el.role === "h1" ? "h2" : el.role === "quote" ? "blockquote" : "p";
     const morph = ctx.morph && el.role === "h1" ? ({ viewTransitionName: "k-title" } as CSSProperties) : undefined;
     return (
-      <Tag className={cls} style={{ ...a.style, ...morph }} onClick={onClick} data-el={el.id}>
+      <Tag className={cls} style={{ ...a.style, ...morph, ...textCss(el.style) }} onClick={onClick} data-el={el.id}>
         {tag}
         {inner}
       </Tag>
@@ -413,7 +491,7 @@ function ElementNode({ el, ctx, className = "", big, variant, frac = 1 }: { el: 
     return (
       <div className={cls.replace(/k-a-\w+/, "") + (a.run ? " k-run" : "")} style={{ ...a.style, position: "absolute", inset: 0, ...(ctx.morph ? { viewTransitionName: "k-media" } : {}) }} onClick={onClick} data-el={el.id}>
         {tag}
-        <Photo el={el} run={a.run} scale={ctx.scale} frac={frac} />
+        <Photo el={el} run={a.run && !free} scale={ctx.scale} frac={frac} />
       </div>
     );
   }
@@ -427,7 +505,18 @@ function ElementNode({ el, ctx, className = "", big, variant, frac = 1 }: { el: 
     );
   }
 
-  if (el.type === "bullets") return <BulletsNode el={el} ctx={ctx} m={m} a={a} cls={cls} onClick={onClick} tag={tag} variant={variant ?? "points"} />;
+  if (el.type === "bullets") return <BulletsNode el={el} ctx={ctx} m={m} a={a} cls={cls} onClick={onClick} tag={tag} variant={variant ?? "points"} editing={editing} />;
+
+  if (el.type === "shape" || el.type === "icon" || el.type === "table") {
+    const anim = a.run ? `k-a k-run k-a-${m?.preset === "scaleIn" || m?.preset === "focus" ? "scaleIn" : "fadeUp"}` : a.cls;
+    const box = cls.replace(/k-a(-\w+)?|k-run/g, "") + " " + anim;
+    return (
+      <div className={box} style={{ ...a.style, position: "relative" }} onClick={onClick} data-el={el.id}>
+        {tag}
+        {el.type === "shape" ? <ShapeNode el={el} ctx={ctx} editing={editing} /> : el.type === "icon" ? <IconNode el={el} /> : <TableNode el={el} ctx={ctx} editing={editing} />}
+      </div>
+    );
+  }
 
   return (
     <div className={cls.replace(/k-a-\w+/, "")} style={a.style} onClick={onClick} data-el={el.id}>
@@ -439,7 +528,7 @@ function ElementNode({ el, ctx, className = "", big, variant, frac = 1 }: { el: 
 
 function Photo({ el, run, scale, frac }: { el: ImageElement; run: boolean; scale: number; frac: number }) {
   const upload = useAssetUrl(isAssetSrc(el.src) ? el.src : null);
-  const cls = `absolute inset-0 h-full w-full object-cover ${run ? "k-ken" : ""}`;
+  const cls = `absolute inset-0 h-full w-full ${el.style?.fit === "contain" ? "object-contain" : "object-cover"} ${run ? "k-ken" : ""}`;
   const pos = { objectPosition: `${el.focal[0] * 100}% ${el.focal[1] * 100}%` };
   if (isAssetSrc(el.src)) {
     if (!upload || upload === "missing") {
@@ -471,6 +560,97 @@ function Photo({ el, run, scale, frac }: { el: ImageElement; run: boolean; scale
   );
 }
 
+// ---------------------------------------------------------------------------
+// Shapes, icons and tables (added from the editor's Insert bar).
+
+function ShapeNode({ el, ctx, editing }: { el: ShapeElement; ctx: RenderCtx; editing: boolean }) {
+  const st = el.style ?? {};
+  const w = el.frame?.w ?? 400;
+  const h = el.frame?.h ?? 300;
+  const isLine = el.shape === "line" || el.shape === "arrow";
+  const fill = isLine ? "none" : cssColor(st.fill ?? "accent");
+  const strokeCol = cssColor(st.stroke ?? (isLine ? "accent" : "none")) ?? "transparent";
+  const sw = st.strokeWidth ?? (isLine ? 6 : st.stroke && st.stroke !== "none" ? 4 : 0);
+  const textColor = cssColor(st.color) ?? (st.fill === "none" || isLine ? "var(--k-text)" : "var(--k-on-accent)");
+  const text =
+    el.text || editing ? (
+      <div data-shape-text="" className="absolute inset-0 flex flex-col p-6" style={{ justifyContent: VALIGN[st.valign ?? "middle"], textAlign: st.align ?? "center", color: textColor, fontSize: st.fontSize ?? 36, lineHeight: st.lineHeight ?? 1.25, fontWeight: st.bold ? 700 : 500, fontStyle: st.italic ? "italic" : undefined, textDecoration: st.underline ? "underline" : undefined, whiteSpace: "pre-wrap" }}>
+        {ctx.editable ? <EditableText value={el.text} editing={editing} multiline allowEmpty onCommit={(v) => ctx.onEditField?.(el.id, "text", v)} label="Shape text" /> : el.text}
+      </div>
+    ) : null;
+
+  if (el.shape === "rect" || el.shape === "roundRect" || el.shape === "ellipse") {
+    const radius = el.shape === "ellipse" ? "50%" : el.shape === "roundRect" ? (st.radius ?? Math.min(48, w / 4, h / 4)) : (st.radius ?? 0);
+    return (
+      <div data-shape-body="" className="absolute inset-0" style={{ background: fill, border: sw ? `${sw}px solid ${strokeCol}` : undefined, borderRadius: radius }}>
+        {text}
+      </div>
+    );
+  }
+  const i = sw / 2;
+  let shape: ReactNode;
+  if (el.shape === "triangle") shape = <polygon points={`${w / 2},${i} ${w - i},${h - i} ${i},${h - i}`} />;
+  else if (el.shape === "diamond") shape = <polygon points={`${w / 2},${i} ${w - i},${h / 2} ${w / 2},${h - i} ${i},${h / 2}`} />;
+  else if (el.shape === "star") {
+    const pts = Array.from({ length: 10 }, (_, k) => {
+      const r = k % 2 === 0 ? 1 : 0.42;
+      const ang = -Math.PI / 2 + (k * Math.PI) / 5;
+      return `${(w / 2 + Math.cos(ang) * r * (w / 2 - i)).toFixed(1)},${(h / 2 + Math.sin(ang) * r * (h / 2 - i) + h * 0.05).toFixed(1)}`;
+    });
+    shape = <polygon points={pts.join(" ")} />;
+  } else if (el.shape === "line") shape = <line x1={i} y1={h / 2} x2={w - i} y2={h / 2} strokeLinecap="round" />;
+  else {
+    const head = Math.min(h, Math.max(sw * 4, 28));
+    shape = (
+      <>
+        <line x1={i} y1={h / 2} x2={w - head * 0.9} y2={h / 2} strokeLinecap="round" />
+        <polygon points={`${w},${h / 2} ${w - head},${h / 2 - head / 2} ${w - head},${h / 2 + head / 2}`} style={{ fill: strokeCol, stroke: "none" }} />
+      </>
+    );
+  }
+  return (
+    <>
+      <svg data-shape-body="" className="absolute inset-0 overflow-visible" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" style={{ fill, stroke: strokeCol, strokeWidth: sw, strokeLinejoin: "round" }}>
+        {shape}
+      </svg>
+      {text}
+    </>
+  );
+}
+
+function IconNode({ el }: { el: IconElement }) {
+  const w = el.frame?.w ?? 160;
+  const h = el.frame?.h ?? 160;
+  return (
+    <div className="absolute inset-0 flex items-center justify-center" style={{ color: cssColor(el.style?.color ?? "accent") }}>
+      <Icon name={el.name} size={Math.min(w, h)} stroke={el.style?.strokeWidth ?? 1.75} />
+    </div>
+  );
+}
+
+function TableNode({ el, ctx, editing }: { el: TableElement; ctx: RenderCtx; editing: boolean }) {
+  const st = el.style ?? {};
+  const head = cssColor(st.fill ?? "accent");
+  return (
+    <table className="k-table h-full w-full" style={{ fontSize: st.fontSize ?? 28, color: cssColor(st.color) ?? "var(--k-text)", textAlign: st.align ?? "left" }}>
+      <tbody>
+        {el.rows.map((row, r) => {
+          const isHead = el.header && r === 0;
+          return (
+            <tr key={r} style={isHead ? { background: head, color: st.fill === "none" ? undefined : "var(--k-on-accent)", fontWeight: 600 } : r % 2 === 0 ? { background: "var(--k-surface)" } : undefined}>
+              {row.map((cell, k) => (
+                <td key={k} style={{ border: "2px solid var(--k-rule)", padding: "0.45em 0.7em", verticalAlign: "middle" }}>
+                  {ctx.editable ? <EditableText value={cell} editing={editing} allowEmpty onCommit={(v) => ctx.onEditField?.(el.id, `rows/${r}/${k}`, v)} label={`Row ${r + 1}, column ${k + 1}`} /> : cell}
+                </td>
+              ))}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 function Chip({ name, size = 72 }: { name?: string; size?: number }) {
   return (
     <span className="k-chip inline-flex flex-none items-center justify-center" style={{ width: size, height: size, borderRadius: size * 0.3 }}>
@@ -479,7 +659,7 @@ function Chip({ name, size = 72 }: { name?: string; size?: number }) {
   );
 }
 
-function BulletsNode({ el, ctx, m, a, cls, onClick, tag, variant }: { el: BulletsElement; ctx: RenderCtx; m?: ResolvedMotion; a: ReturnType<typeof animState>; cls: string; onClick?: (e: React.MouseEvent) => void; tag: ReactNode; variant: Variant }) {
+function BulletsNode({ el, ctx, m, a, cls, onClick, tag, variant, editing }: { el: BulletsElement; ctx: RenderCtx; m?: ResolvedMotion; a: ReturnType<typeof animState>; cls: string; onClick?: (e: React.MouseEvent) => void; tag: ReactNode; variant: Variant; editing: boolean }) {
   const stagger = m?.stagger ?? 60;
   const preset = m?.preset;
   const itemAnim = preset === "scaleIn" ? "k-a-scaleIn" : "k-a-fadeUp";
@@ -487,7 +667,7 @@ function BulletsNode({ el, ctx, m, a, cls, onClick, tag, variant }: { el: Bullet
   const itemDelay = (i: number) => (m?.delayMs ?? 0) + i * stagger * (variant === "points" ? 1 : 2);
   const itemStyle = (i: number): CSSProperties => (a.run ? { animationDelay: `${itemDelay(i)}ms` } : {});
   const wrapCls = cls.replace(/k-a-\w+/, "") + (a.run && variant === "timeline" ? " k-run" : "");
-  const text = (item: string, i: number, label: string) => (ctx.editable ? <EditableText value={item} onCommit={(v) => ctx.onEditItem?.(el.id, i, v)} label={label} /> : item);
+  const text = (item: string, i: number, label: string) => (ctx.editable ? <EditableText value={item} editing={editing} onCommit={(v) => ctx.onEditItem?.(el.id, i, v)} label={label} /> : item);
   const icons = el.icons ?? [];
   const n = el.items.length;
 
@@ -597,7 +777,7 @@ function BulletsNode({ el, ctx, m, a, cls, onClick, tag, variant }: { el: Bullet
   );
 }
 
-function EditableText({ value, onCommit, label }: { value: string; onCommit: (v: string) => void; label: string }) {
+function EditableText({ value, onCommit, label, editing = true, multiline = false, allowEmpty = false }: { value: string; onCommit: (v: string) => void; label: string; editing?: boolean; multiline?: boolean; allowEmpty?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   // Keep DOM in sync when the value changes from outside (undo, AI accept) without fighting the caret.
   useEffect(() => {
@@ -606,17 +786,21 @@ function EditableText({ value, onCommit, label }: { value: string; onCommit: (v:
   return (
     <span
       ref={ref}
-      contentEditable
+      contentEditable={editing}
       suppressContentEditableWarning
       role="textbox"
       aria-label={label}
-      tabIndex={0}
+      aria-readonly={!editing}
+      tabIndex={editing ? 0 : -1}
+      data-edit-text=""
+      style={multiline ? { whiteSpace: "pre-wrap" } : undefined}
       onBlur={(e) => {
-        const v = e.currentTarget.innerText.replace(/\s+/g, " ").trim();
-        if (v !== value) onCommit(v);
+        const raw = e.currentTarget.innerText;
+        const v = multiline ? raw.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim() : raw.replace(/\s+/g, " ").trim();
+        if (v !== value && (v || allowEmpty)) onCommit(v);
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
+        if (e.key === "Enter" && !e.shiftKey && !multiline) {
           e.preventDefault();
           (e.currentTarget as HTMLElement).blur();
         }

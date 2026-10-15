@@ -5,12 +5,12 @@
 // (including Morph) and speaker notes are written too.
 import type PptxGenJS from "pptxgenjs";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
-import type { ChartElement, Deck } from "@/lib/deck/schema";
+import type { ChartElement, Deck, ShapeKind } from "@/lib/deck/schema";
 import { resolveTimeline } from "@/lib/deck/motion";
 import { deckTheme } from "@/lib/deck/themes";
-import { captureScene, type Rgba, type SceneItem } from "./scene";
+import { captureScene, type Rgba, type SceneItem, type SceneText } from "./scene";
 import { forEachRenderedSlide, STAGE_W } from "./render";
-import { injectSlideXml, shapeIds, timingXml, transitionXml, type Effect } from "./timing";
+import { injectSlideXml, shapeIds, timingXml, transitionXml, uniqueShapeIds, type Effect } from "./timing";
 
 export interface PptxOptions {
   /** "original" uses the deck's web fonts (install them for an exact match); "office" uses Arial and Georgia. */
@@ -93,6 +93,55 @@ function addChart(pptx: PptxGenJS, slide: PptxGenJS.Slide, it: Extract<SceneItem
   }
 }
 
+const SHAPE_TYPE: Record<ShapeKind, string> = { rect: "rect", roundRect: "roundRect", ellipse: "ellipse", triangle: "triangle", diamond: "diamond", line: "line", arrow: "line", star: "star5" };
+
+type Fonts = (typeof FONTS)[keyof typeof FONTS];
+type Pos = { x: number; y: number; w: number; h: number };
+
+function textOpts(t: SceneText, fonts: Fonts) {
+  return {
+    fontFace: fonts[t.family],
+    fontSize: Math.round(t.fontPx * PT_PER_PX * 10) / 10,
+    bold: t.weight >= 600,
+    italic: t.italic,
+    color: t.color.hex,
+    transparency: transparency(t.color),
+    align: t.align,
+    valign: t.valign,
+    ...(t.underline ? { underline: { style: "sng" as const } } : {}),
+  };
+}
+
+function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, it: Extract<SceneItem, { kind: "shape" }>, pos: Pos, name: string, fonts: Fonts) {
+  const isLine = it.shape === "line" || it.shape === "arrow";
+  // Lines are drawn through the middle of their box.
+  const p = isLine ? { ...pos, y: pos.y + pos.h / 2, h: 0 } : pos;
+  const line = it.line
+    ? { color: it.line.color.hex, width: it.line.width * PT_PER_PX, transparency: transparency(it.line.color), ...(it.shape === "arrow" ? { endArrowType: "triangle" as const } : {}) }
+    : { type: "none" as const };
+  const opts = {
+    ...p,
+    objectName: name,
+    fill: it.fill && !isLine ? { color: it.fill.hex, transparency: transparency(it.fill) } : { type: "none" as const },
+    line,
+    ...(it.shape === "roundRect" || (it.shape === "rect" && it.radius > 0) ? { rectRadius: inch(Math.min(it.radius, (pos.w / IN_PER_PX) / 2, (pos.h / IN_PER_PX) / 2)) } : {}),
+  };
+  const type = (it.shape === "rect" && it.radius > 0 ? "roundRect" : SHAPE_TYPE[it.shape]) as PptxGenJS.ShapeType;
+  if (it.text && !isLine) slide.addText(it.text.text, { ...opts, shape: type, ...textOpts(it.text, fonts), margin: 18 * PT_PER_PX, fit: "none" });
+  else slide.addShape(type, opts);
+}
+
+function addTable(slide: PptxGenJS.Slide, it: Extract<SceneItem, { kind: "table" }>, pos: Pos, name: string, fonts: Fonts) {
+  const border = { type: "solid" as const, pt: Math.max(0.25, it.border.width * PT_PER_PX), color: it.border.color.hex };
+  const rows = it.rows.map((r) =>
+    r.cells.map((cell) => ({
+      text: cell.text,
+      options: { ...textOpts(cell, fonts), valign: "middle" as const, fill: cell.fill ? { color: cell.fill.hex } : undefined, border: [border, border, border, border] as [typeof border, typeof border, typeof border, typeof border], margin: 0.08 },
+    })),
+  );
+  slide.addTable(rows, { x: pos.x, y: pos.y, w: pos.w, colW: it.colW.map((w) => inch(w)), rowH: it.rows.map((r) => inch(r.h)), objectName: name, autoPage: false });
+}
+
 /** Builds the .pptx in the browser and returns it as a Blob. */
 export async function exportPptx(deck: Deck, opts: PptxOptions, onProgress?: (done: number, total: number) => void): Promise<Blob> {
   const { default: Pptx } = await import("pptxgenjs");
@@ -162,10 +211,16 @@ export async function exportPptx(deck: Deck, opts: PptxOptions, onProgress?: (do
             fit: "none",
             wrap: !it.nowrap,
             isTextBox: true,
+            ...(it.underline ? { underline: { style: "sng" as const } } : {}),
           });
         } else if (it.kind === "image") {
           kind = "pic";
           slide.addImage({ data: it.dataUrl.replace(/^data:/, ""), ...pos, objectName: name, altText: it.alt || undefined });
+        } else if (it.kind === "shape") {
+          addShape(pptx, slide, it, pos, name, fonts);
+        } else if (it.kind === "table") {
+          kind = "pic"; // a graphic frame: animated as one object, no build entry
+          addTable(slide, it, pos, name, fonts);
         } else {
           kind = "chart";
           addChart(pptx, slide, it, theme.colors, fonts.sans, name);
@@ -198,7 +253,7 @@ export async function exportPptx(deck: Deck, opts: PptxOptions, onProgress?: (do
   const files = unzipSync(raw);
   deck.slides.forEach((ds, i) => {
     const path = `ppt/slides/slide${i + 1}.xml`;
-    const xml = files[path] ? strFromU8(files[path]) : null;
+    const xml = files[path] ? uniqueShapeIds(strFromU8(files[path])) : null;
     if (!xml) return;
     const ids = shapeIds(xml);
     const effects: Effect[] = (plans[i]?.effects ?? []).flatMap((e) => {

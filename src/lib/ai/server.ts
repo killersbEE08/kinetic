@@ -1,4 +1,5 @@
 import "server-only";
+import { isFree } from "../deck/schema";
 import type { EditScope } from "../deck/patch";
 import type { Deck, GenerationInput, Outline } from "../deck/schema";
 import type { SlottedSlide } from "../deck/compose";
@@ -88,6 +89,9 @@ export async function proposeEdit(user: AuthedUser, deck: Deck, scope: EditScope
   if (scope.kind === "element") {
     const slide = deck.slides.find((s) => s.id === scope.slideId);
     if (!slide) throw new EditError("The selected slide no longer exists.");
+    if (slide.elements.filter((e) => scope.elementIds.includes(e.id)).every(isFree)) {
+      throw new EditError("AI edits work on the slide's main content. Edit boxes you added by hand directly, or select the whole slide.");
+    }
     const current = toSlotted(slide).slots.filter((s) => slide.elements.some((e) => e.slot === s.slot && scope.elementIds.includes(e.id)));
     const titleEl = slide.elements.find((e) => e.type === "text" && e.role === "h1");
     const reply = await geminiJson({
