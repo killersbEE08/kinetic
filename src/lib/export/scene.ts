@@ -27,6 +27,8 @@ export interface Owner {
 interface Common {
   box: Box;
   owner?: Owner;
+  /** Clockwise degrees around the box centre (from a rotated element). */
+  rotate?: number;
 }
 
 /** Text drawn inside a shape or a table cell. */
@@ -173,7 +175,7 @@ export async function captureScene(stage: HTMLElement, slide: Slide, opts: Captu
       items.push({ kind: "image", box, dataUrl: "", alt: "", owner }); // placeholder keeps paint order
       pending.push(
         rasterizeSvg(node, box, opacity).then((dataUrl) => {
-          items[idx] = { kind: "image", box, dataUrl, alt: "", owner };
+          items[idx] = { ...items[idx], kind: "image", dataUrl, alt: "" } as SceneItem;
         }),
       );
       return;
@@ -227,7 +229,7 @@ export async function captureScene(stage: HTMLElement, slide: Slide, opts: Captu
       items.push({ kind: "image", box: vis, dataUrl: "", alt: node.alt, owner });
       pending.push(
         cropImage(node, box, vis, cs.objectPosition, opacity, opts.photoWidth ?? 1920).then((dataUrl) => {
-          items[idx] = { kind: "image", box: vis, dataUrl, alt: node.alt, owner };
+          items[idx] = { ...items[idx], kind: "image", dataUrl, alt: node.alt } as SceneItem;
         }),
       );
       return;
@@ -284,7 +286,31 @@ export async function captureScene(stage: HTMLElement, slide: Slide, opts: Captu
   };
 
   const stageBox = { x: 0, y: 0, w: origin.width, h: origin.height };
-  for (const child of Array.from(stage.children)) walk(child, { origin, opacity: 1, clip: stageBox });
+  // Rotated elements: measure them unrotated, then rotate each piece around the element's centre.
+  const rotated = Array.from(stage.querySelectorAll<HTMLElement>("[data-free-for][data-rot]"));
+  const turns = new Map<string, { r: number; cx: number; cy: number }>();
+  for (const w of rotated) {
+    const r = Number(w.dataset.rot) || 0;
+    turns.set(w.dataset.freeFor!, { r, cx: parseFloat(w.style.left) + parseFloat(w.style.width) / 2, cy: parseFloat(w.style.top) + parseFloat(w.style.height) / 2 });
+    w.dataset.prevTransform = w.style.transform;
+    w.style.transform = "none";
+  }
+  try {
+    for (const child of Array.from(stage.children)) walk(child, { origin, opacity: 1, clip: stageBox });
+  } finally {
+    for (const w of rotated) w.style.transform = w.dataset.prevTransform ?? "";
+  }
+  for (const it of items) {
+    const t = it.owner && turns.get(it.owner.elId);
+    if (!t) continue;
+    const a = (t.r * Math.PI) / 180;
+    const vx = it.box.x + it.box.w / 2 - t.cx;
+    const vy = it.box.y + it.box.h / 2 - t.cy;
+    const nx = t.cx + vx * Math.cos(a) - vy * Math.sin(a);
+    const ny = t.cy + vx * Math.sin(a) + vy * Math.cos(a);
+    it.box = { ...it.box, x: nx - it.box.w / 2, y: ny - it.box.h / 2 };
+    it.rotate = t.r;
+  }
   await Promise.all(pending);
   return { bg, items: items.filter((it) => it.kind !== "image" || it.dataUrl) };
 }

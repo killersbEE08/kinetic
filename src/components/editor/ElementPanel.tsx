@@ -3,14 +3,15 @@
 // Format panel for the selected element: position and size, arrange, text, fill and border,
 // icon, table and photo options. Every control writes one undoable patch.
 import { useState } from "react";
-import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignLeft, AlignRight, AlignStartVertical, ArrowDownToLine, ArrowUpToLine, Bold, ChevronDown, ChevronUp, Copy, Italic, RotateCcw, Trash2, Underline } from "lucide-react";
+import { AlignCenter, AlignCenterVertical, AlignEndVertical, AlignHorizontalDistributeCenter, AlignLeft, AlignRight, AlignStartVertical, AlignVerticalDistributeCenter, ArrowDownToLine, ArrowUpToLine, Bold, ChevronDown, ChevronUp, Copy, Group, Italic, RotateCcw, RotateCw, Trash2, Underline, Ungroup } from "lucide-react";
 import { Icon } from "@/components/deck/Icon";
 import { ICON_NAMES } from "@/lib/deck/icons";
 import { isFree, SHAPES, type Deck, type Element, type ElStyle, type Frame, type ShapeKind } from "@/lib/deck/schema";
 import type { PatchOp } from "@/lib/deck/patch";
 import { deckTheme } from "@/lib/deck/themes";
-import { alignToSlide, duplicateElement, round } from "@/lib/deck/canvas";
-import { frameOps } from "./CanvasEditor";
+import { alignFrames, alignToSlide, boundsOf, distributeFrames, duplicateElement, round, type AlignWhere } from "@/lib/deck/canvas";
+import { newId } from "@/lib/deck/ids";
+import { frameOf, frameOps, framesOps } from "./CanvasEditor";
 import { SHAPE_LABEL } from "./Panels";
 
 type Commit = (ops: PatchOp[], opts: { label: string }) => boolean;
@@ -126,6 +127,15 @@ export function ElementPanel({ deck, slideIndex, el, frame, commit, onSelect }: 
             <IconBtn label="Align top" onClick={() => setFrame(alignToSlide(f, "top"), "Align")}><AlignStartVertical size={14} className="rotate-90" /></IconBtn>
             <IconBtn label="Centre vertically" onClick={() => setFrame(alignToSlide(f, "middle"), "Align")}><AlignCenterVertical size={14} className="rotate-90" /></IconBtn>
             <IconBtn label="Align bottom" onClick={() => setFrame(alignToSlide(f, "bottom"), "Align")}><AlignEndVertical size={14} className="rotate-90" /></IconBtn>
+          </div>
+        )}
+        {f && el.type !== "mockup" && el.type !== "table" && (
+          <div className="mt-2 flex items-center gap-2">
+            <NumField label="°" value={f.r ?? 0} onCommit={(v) => setFrame({ ...f, r: v }, "Rotate")} min={-360} max={360} />
+            <IconBtn label="Rotate 90° right" onClick={() => setFrame({ ...f, r: (f.r ?? 0) + 90 }, "Rotate")}>
+              <RotateCw size={14} />
+            </IconBtn>
+            {!!f.r && <IconBtn label="Remove rotation" onClick={() => setFrame({ ...f, r: 0 }, "Rotate")}>0°</IconBtn>}
           </div>
         )}
         {!isFree(el) && el.frame && (
@@ -309,5 +319,161 @@ function NumFieldInline({ value, onCommit }: { value: number; onCommit: (v: numb
       }}
       onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
     />
+  );
+}
+
+/** Several elements selected: align, distribute, group, layer, duplicate, delete, shared text style. */
+export function MultiPanel({ deck, slideIndex, ids, commit, onSelectIds }: { deck: Deck; slideIndex: number; ids: string[]; commit: Commit; onSelectIds: (ids: string[]) => void }) {
+  const si = slideIndex;
+  const slide = deck.slides[si];
+  const sel = slide.elements.filter((e) => ids.includes(e.id));
+  const idx = slide.elements.map((e, i) => (ids.includes(e.id) ? i : -1)).filter((i) => i >= 0);
+  if (!sel.length) return null;
+  const frames = new Map(sel.map((e) => [e.id, frameOf(e)] as const).filter((x): x is readonly [string, Frame] => !!x[1]));
+  const grouped = sel.every((e) => e.group && e.group === sel[0].group);
+  const textual = sel.filter((e) => e.type === "text" || e.type === "shape" || e.type === "table");
+
+  const apply = (next: Frame[], label: string) => {
+    const keys = [...frames.keys()];
+    commit(framesOps(si, slide, new Map(keys.map((k, i) => [k, next[i]]))), { label });
+  };
+  const align = (where: AlignWhere) => apply(alignFrames([...frames.values()], where), "Align");
+  const toSlide = (where: AlignWhere) => {
+    const b = boundsOf([...frames.values()]);
+    const moved = alignToSlide(b, where);
+    apply([...frames.values()].map((f) => ({ ...f, x: f.x + moved.x - b.x, y: f.y + moved.y - b.y })), "Align to slide");
+  };
+  const styleAll = (patch: Partial<ElStyle>, label: string) => {
+    const ops = slide.elements.flatMap((e, ei) => {
+      if (!ids.includes(e.id) || !(e.type === "text" || e.type === "shape" || e.type === "table")) return [];
+      const next = { ...(e.style ?? {}), ...patch } as Record<string, unknown>;
+      for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+      return [{ op: "add" as const, path: `/slides/${si}/elements/${ei}/style`, value: next }];
+    });
+    if (ops.length) commit(ops, { label });
+  };
+  const sizes = textual.map((e) => e.style?.fontSize).filter((x): x is number => typeof x === "number");
+  const base = sizes.length ? Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length) : 38;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-[13px] font-semibold">{sel.length} elements selected{grouped ? " (group)" : ""}</h3>
+        <button type="button" className="btn btn-ghost btn-sm min-h-7 px-2 text-[12px]" onClick={() => onSelectIds([])}>Slide settings</button>
+      </div>
+      <div className="space-y-4 rounded-[10px] border border-line p-3">
+        <Sub title="Align to each other">
+          <div className="flex flex-wrap gap-1">
+            <IconBtn label="Align left edges" onClick={() => align("left")}><AlignLeft size={14} /></IconBtn>
+            <IconBtn label="Align centres" onClick={() => align("center")}><AlignCenter size={14} /></IconBtn>
+            <IconBtn label="Align right edges" onClick={() => align("right")}><AlignRight size={14} /></IconBtn>
+            <IconBtn label="Align tops" onClick={() => align("top")}><AlignStartVertical size={14} className="rotate-90" /></IconBtn>
+            <IconBtn label="Align middles" onClick={() => align("middle")}><AlignCenterVertical size={14} className="rotate-90" /></IconBtn>
+            <IconBtn label="Align bottoms" onClick={() => align("bottom")}><AlignEndVertical size={14} className="rotate-90" /></IconBtn>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            <IconBtn label="Distribute horizontally (equal gaps)" onClick={() => sel.length >= 3 && apply(distributeFrames([...frames.values()], "x"), "Distribute")}>
+              <AlignHorizontalDistributeCenter size={14} />
+              <span className="ml-1">Space across</span>
+            </IconBtn>
+            <IconBtn label="Distribute vertically (equal gaps)" onClick={() => sel.length >= 3 && apply(distributeFrames([...frames.values()], "y"), "Distribute")}>
+              <AlignVerticalDistributeCenter size={14} />
+              <span className="ml-1">Space down</span>
+            </IconBtn>
+          </div>
+          {sel.length < 3 && <p className="mt-1 text-[11px] text-ink-2">Select 3 or more to space them evenly.</p>}
+        </Sub>
+        <Sub title="Position on slide">
+          <div className="flex flex-wrap gap-1">
+            <IconBtn label="Centre on slide horizontally" onClick={() => toSlide("center")}><AlignCenter size={14} /></IconBtn>
+            <IconBtn label="Centre on slide vertically" onClick={() => toSlide("middle")}><AlignCenterVertical size={14} className="rotate-90" /></IconBtn>
+          </div>
+        </Sub>
+        <Sub title="Arrange">
+          <div className="flex flex-wrap gap-1">
+            {grouped ? (
+              <IconBtn label="Ungroup (Ctrl Shift G)" onClick={() => commit(idx.map((ei) => ({ op: "remove" as const, path: `/slides/${si}/elements/${ei}/group` })), { label: "Ungroup" })}>
+                <Ungroup size={14} />
+                <span className="ml-1">Ungroup</span>
+              </IconBtn>
+            ) : (
+              <IconBtn
+                label="Group (Ctrl G)"
+                onClick={() => {
+                  const g = newId("g");
+                  commit(idx.map((ei) => ({ op: "add" as const, path: `/slides/${si}/elements/${ei}/group`, value: g })), { label: "Group" });
+                }}
+              >
+                <Group size={14} />
+                <span className="ml-1">Group</span>
+              </IconBtn>
+            )}
+            <IconBtn
+              label="Bring to front"
+              onClick={() => {
+                // Move each selected element to the end, keeping their order; place any layout elements first.
+                const ops: PatchOp[] = [];
+                const fr = framesOps(si, slide, new Map([...frames].filter(([id]) => !slide.elements.find((e) => e.id === id)?.frame)));
+                ops.push(...fr);
+                let count = 0;
+                for (const ei of idx) {
+                  ops.push({ op: "move", from: `/slides/${si}/elements/${ei - count}`, path: `/slides/${si}/elements/${slide.elements.length - 1}` });
+                  count++;
+                }
+                commit(ops, { label: "Bring to front" });
+              }}
+            >
+              <ArrowUpToLine size={14} />
+            </IconBtn>
+            <IconBtn
+              label="Duplicate (Ctrl D)"
+              onClick={() => {
+                if (slide.elements.length + sel.length > 60) return;
+                const g = sel.some((e) => e.group) ? newId("g") : undefined;
+                const copies = sel.map((e) => {
+                  const f = frames.get(e.id) ?? { x: 760, y: 440, w: 400, h: 200 };
+                  const cp = duplicateElement(e, round(f));
+                  if (g && e.group) cp.group = g;
+                  else delete cp.group;
+                  return cp;
+                });
+                if (commit(copies.map((cp) => ({ op: "add" as const, path: `/slides/${si}/elements/-`, value: cp })), { label: "Duplicate" })) onSelectIds(copies.map((cp) => cp.id));
+              }}
+            >
+              <Copy size={14} />
+            </IconBtn>
+            <IconBtn
+              label="Delete (Del)"
+              danger
+              onClick={() => {
+                commit([...idx].sort((a, b) => b - a).map((ei) => ({ op: "remove" as const, path: `/slides/${si}/elements/${ei}` })), { label: `Delete ${idx.length} elements` });
+                onSelectIds([]);
+              }}
+            >
+              <Trash2 size={14} />
+            </IconBtn>
+          </div>
+        </Sub>
+        {textual.length > 0 && (
+          <Sub title={`Text (${textual.length})`}>
+            <div className="flex items-center gap-1">
+              <IconBtn label="Smaller" onClick={() => styleAll({ fontSize: Math.max(8, Math.round(base / 1.12)) }, "Text size")}>A−</IconBtn>
+              <IconBtn label="Larger" onClick={() => styleAll({ fontSize: Math.min(400, Math.round(base * 1.12)) }, "Text size")}>A+</IconBtn>
+              <span className="mx-1 h-5 w-px bg-line" />
+              <IconBtn label="Bold" onClick={() => styleAll({ bold: !textual.every((e) => e.style?.bold) || undefined }, "Bold")}><Bold size={14} /></IconBtn>
+              <IconBtn label="Italic" onClick={() => styleAll({ italic: !textual.every((e) => e.style?.italic) || undefined }, "Italic")}><Italic size={14} /></IconBtn>
+              {(["left", "center", "right"] as const).map((a) => (
+                <IconBtn key={a} label={`Align text ${a}`} onClick={() => styleAll({ align: a }, "Align text")}>
+                  {a === "left" ? <AlignLeft size={14} /> : a === "center" ? <AlignCenter size={14} /> : <AlignRight size={14} />}
+                </IconBtn>
+              ))}
+            </div>
+            <p className="mb-1.5 mt-3 text-[12px] text-ink-2">Text colour</p>
+            <Swatches deck={deck} value={undefined} onPick={(col) => styleAll({ color: col }, "Text colour")} />
+          </Sub>
+        )}
+        <p className="text-[11px] leading-[15px] text-ink-2">Drag any selected element to move them together. Arrow keys nudge all of them.</p>
+      </div>
+    </div>
   );
 }

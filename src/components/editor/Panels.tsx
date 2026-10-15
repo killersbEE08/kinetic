@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ChartElement, Deck, Element, Frame, Motion, ShapeKind, Slide } from "@/lib/deck/schema";
-import { ElementPanel } from "./ElementPanel";
+import { ElementPanel, MultiPanel } from "./ElementPanel";
 import { EASINGS, MOTION_PRESETS, TRANSITIONS, TRIGGERS } from "@/lib/deck/schema";
 import type { PatchOp } from "@/lib/deck/patch";
 import { LAYOUTS, getLayout } from "@/lib/deck/layouts";
@@ -38,7 +38,7 @@ const TRANSITION_LABEL: Record<Slide["transition"], string> = { cut: "Cut", fade
 export const SHAPE_LABEL: Record<ShapeKind, string> = { rect: "Rectangle", roundRect: "Rounded rectangle", ellipse: "Ellipse", triangle: "Triangle", diamond: "Diamond", line: "Line", arrow: "Arrow", star: "Star" };
 
 export function elementLabel(el: Element): string {
-  if (el.slot === "free" && el.type === "text") return `Text: ${el.content.slice(0, 32)}${el.content.length > 32 ? "?" : ""}`;
+  if (el.slot === "free" && el.type === "text") return `Text: ${el.content.slice(0, 32)}${el.content.length > 32 ? "…" : ""}`;
   if (el.slot === "free" && el.type === "image") return "Photo";
   if (el.slot === "free" && el.type === "chart") return el.kind === "kpi" ? "Big number" : `${el.kind === "bar" ? "Bar" : "Line"} chart`;
   if (el.slot === "free" && el.type === "bullets") return `List: ${el.items.length} points`;
@@ -48,7 +48,7 @@ export function elementLabel(el: Element): string {
   if (el.type === "mockup") return `${el.slot}: ${el.device} screen`;
   if (el.type === "shape") return `Shape: ${el.text ? el.text.slice(0, 24) : SHAPE_LABEL[el.shape]}`;
   if (el.type === "icon") return `Icon: ${el.name}`;
-  if (el.type === "table") return `Table: ${el.rows.length} ? ${el.rows[0]?.length ?? 0}`;
+  if (el.type === "table") return `Table: ${el.rows.length} × ${el.rows[0]?.length ?? 0}`;
   return `${el.slot}: ${el.kind === "kpi" ? "numbers" : `${el.kind} chart`}`;
 }
 
@@ -63,7 +63,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ---------------------------------------------------------------------------
 
-export function DesignPanel({ deck, slideIndex, selected, commit, frame = null, onSelect }: { deck: Deck; slideIndex: number; selected: Element | null; commit: Commit; frame?: Frame | null; onSelect?: (id: string | null) => void }) {
+export function DesignPanel({ deck, slideIndex, selected, selectedIds = [], onSelectIds, commit, frame = null, onSelect }: { deck: Deck; slideIndex: number; selected: Element | null; selectedIds?: string[]; onSelectIds?: (ids: string[]) => void; commit: Commit; frame?: Frame | null; onSelect?: (id: string | null) => void }) {
   const slide = deck.slides[slideIndex];
   const [title, setTitle] = useState(deck.title);
   // Re-sync the draft when the title changes elsewhere (undo, AI edit).
@@ -73,6 +73,10 @@ export function DesignPanel({ deck, slideIndex, selected, commit, frame = null, 
     setTitle(deck.title);
   }
   const ei = selected ? slide.elements.findIndex((e) => e.id === selected.id) : -1;
+
+  if (selectedIds.length > 1) {
+    return <MultiPanel deck={deck} slideIndex={slideIndex} ids={selectedIds} commit={commit} onSelectIds={(ids) => onSelectIds?.(ids)} />;
+  }
 
   if (selected && ei >= 0) {
     return (

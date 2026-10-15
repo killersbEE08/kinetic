@@ -51,6 +51,8 @@ export const Frame = z.object({
   y: z.number().finite().min(-1080).max(2160),
   w: z.number().finite().min(8).max(3840),
   h: z.number().finite().min(4).max(2160),
+  /** Rotation in degrees, clockwise, around the centre. */
+  r: z.number().finite().min(-360).max(360).optional(),
 });
 export type Frame = z.infer<typeof Frame>;
 
@@ -85,6 +87,8 @@ const Base = z.object({
   frame: Frame.optional(),
   // Look overrides chosen by the user in the editor.
   style: ElStyle.optional(),
+  // Elements with the same group id are selected and moved together.
+  group: z.string().regex(/^[a-z0-9_-]{4,32}$/).optional(),
 });
 
 export const TEXT_ROLES = ["h1", "h2", "body", "caption", "quote", "label"] as const;

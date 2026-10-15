@@ -32,7 +32,10 @@ function Editor({ id }: { id: string }) {
   const ed = useDeckEditor(id);
   const [rev, setRev] = useState(0);
   const [rawSlideIndex, setSlideIndex] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Selection: one or more elements on the current slide.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedId = selectedIds.length === 1 ? selectedIds[0] : null;
+  const setSelectedId = useCallback((id: string | null) => setSelectedIds(id ? [id] : []), []);
   const [selectionFrame, setSelectionFrame] = useState<Frame | null>(null);
   const [tab, setTab] = useState<Tab>("design");
   const [playKey, setPlayKey] = useState(0);
@@ -128,7 +131,7 @@ function Editor({ id }: { id: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pending, accept, discard, ed, shown]);
+  }, [pending, accept, discard, ed, shown, setSelectedId]);
 
   if (ed.loadError) {
     return (
@@ -326,10 +329,10 @@ function Editor({ id }: { id: string }) {
                   step={step}
                   playKey={`${slide.id}-${playKey}`}
                   page={slideIndex + 1}
-                  selectedId={selectedId}
-                  onSelect={(id) => {
-                    setSelectedId(id);
-                    if (id) setTab((t) => (t === "ask" ? t : "design"));
+                  selectedIds={selectedIds}
+                  onSelectIds={(ids) => {
+                    setSelectedIds(ids);
+                    if (ids.length) setTab((t) => (t === "ask" && ids.length === 1 ? t : "design"));
                   }}
                   commit={commit}
                   onEditText={editText}
@@ -365,7 +368,7 @@ function Editor({ id }: { id: string }) {
                   ))}
                 </div>
               )}
-              <p className="text-[12px] text-ink-2">{editable ? "Click to select, click again to type, drag to move. Arrows nudge, Delete removes, Ctrl D duplicates." : pending ? "Accept or discard the suggestion to keep editing." : ""}</p>
+              <p className="text-[12px] text-ink-2">{editable ? "Click to select, click again to type, drag to move. Shift-click or drag a box to select several. Ctrl G groups." : pending ? "Accept or discard the suggestion to keep editing." : ""}</p>
             </div>
           </div>
 
@@ -393,7 +396,7 @@ function Editor({ id }: { id: string }) {
           </div>
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto p-4">
             {tab === "design" &&
-              (editable ? <DesignPanel deck={deck} slideIndex={si} selected={selected} commit={commit} frame={selectionFrame} onSelect={setSelectedId} /> : <p className="text-[13px] text-ink-2">Accept or discard the suggestion first.</p>)}
+              (editable ? <DesignPanel deck={deck} slideIndex={si} selected={selected} selectedIds={selectedIds} onSelectIds={setSelectedIds} commit={commit} frame={selectionFrame} onSelect={setSelectedId} /> : <p className="text-[13px] text-ink-2">Accept or discard the suggestion first.</p>)}
             {tab === "motion" &&
               (editable ? (
                 <MotionPanel deck={deck} slideIndex={si} selectedId={selectedId} onSelect={setSelectedId} commit={commit} onPreview={play} />

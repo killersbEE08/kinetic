@@ -56,6 +56,7 @@ export function composeSlide(input: SlottedSlide, existing?: Slide): Slide {
       // A hand-placed position and look survive content rewrites.
       ...(keep?.frame ? { frame: keep.frame } : {}),
       ...(keep?.style ? { style: keep.style } : {}),
+      ...(keep?.group ? { group: keep.group } : {}),
     };
 
     if (def.accepts === "text") {

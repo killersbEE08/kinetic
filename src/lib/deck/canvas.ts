@@ -63,7 +63,117 @@ export function duplicateElement(el: Element, frame: Frame): Element {
   return { ...copy, id: newId("el"), slot: FREE_SLOT, frame: { ...frame, x: frame.x + 40, y: frame.y + 40 } };
 }
 
-export const round = (f: Frame): Frame => ({ x: Math.round(f.x), y: Math.round(f.y), w: Math.max(8, Math.round(f.w)), h: Math.max(4, Math.round(f.h)) });
+export const round = (f: Frame): Frame => {
+  const r = f.r ? normalizeAngle(Math.round(f.r * 10) / 10) : 0;
+  return { x: Math.round(f.x), y: Math.round(f.y), w: Math.max(8, Math.round(f.w)), h: Math.max(4, Math.round(f.h)), ...(r ? { r } : {}) };
+};
+
+// ---------------------------------------------------------------------------
+// Rotation
+
+/** Angle in (-180, 180]. */
+export function normalizeAngle(a: number): number {
+  let x = a % 360;
+  if (x <= -180) x += 360;
+  if (x > 180) x -= 360;
+  return Math.abs(x) < 1e-9 ? 0 : x;
+}
+
+const rad = (d: number) => (d * Math.PI) / 180;
+function rot(p: { x: number; y: number }, deg: number) {
+  const c = Math.cos(rad(deg));
+  const s = Math.sin(rad(deg));
+  return { x: p.x * c - p.y * s, y: p.x * s + p.y * c };
+}
+
+/**
+ * Rotation angle for a pointer at `point` dragging the handle above `center`.
+ * Snaps to 15? steps with `step`, otherwise to 0/90/180/270 when within 4?.
+ */
+export function angleFrom(center: { x: number; y: number }, point: { x: number; y: number }, step: boolean): number {
+  const a = (Math.atan2(point.y - center.y, point.x - center.x) * 180) / Math.PI + 90;
+  if (step) return normalizeAngle(Math.round(a / 15) * 15);
+  for (const t of [0, 90, 180, -90, 270, -180]) if (Math.abs(normalizeAngle(a - t)) < 4) return normalizeAngle(t);
+  return normalizeAngle(Math.round(a));
+}
+
+/** Resize a rotated frame: the handle follows the pointer in the element's own axes, the opposite side stays put on screen. */
+export function resizeRotated(start: Frame, handle: Handle, dx: number, dy: number, keepRatio: boolean, min = 20): Frame {
+  const r = start.r ?? 0;
+  if (!r) return resizeFrame(start, handle, dx, dy, keepRatio, min);
+  const local = rot({ x: dx, y: dy }, -r);
+  const nf = resizeFrame({ ...start, r: undefined }, handle, local.x, local.y, keepRatio, min);
+  // Anchor = the point opposite the handle (fixed in local coordinates by resizeFrame).
+  const ax = handle.includes("e") ? start.x : handle.includes("w") ? start.x + start.w : start.x + start.w / 2;
+  const ay = handle.includes("s") ? start.y : handle.includes("n") ? start.y + start.h : start.y + start.h / 2;
+  const c0 = { x: start.x + start.w / 2, y: start.y + start.h / 2 };
+  const world = (p: { x: number; y: number }, c: { x: number; y: number }) => {
+    const v = rot({ x: p.x - c.x, y: p.y - c.y }, r);
+    return { x: c.x + v.x, y: c.y + v.y };
+  };
+  const anchorWorld = world({ x: ax, y: ay }, c0);
+  const c1 = { x: nf.x + nf.w / 2, y: nf.y + nf.h / 2 };
+  const v = rot({ x: ax - c1.x, y: ay - c1.y }, r);
+  const newCenter = { x: anchorWorld.x - v.x, y: anchorWorld.y - v.y };
+  return { x: newCenter.x - nf.w / 2, y: newCenter.y - nf.h / 2, w: nf.w, h: nf.h, r };
+}
+
+/** Axis-aligned box around a (possibly rotated) frame. */
+export function outerBox(f: Frame): Frame {
+  if (!f.r) return { x: f.x, y: f.y, w: f.w, h: f.h };
+  const c = Math.abs(Math.cos(rad(f.r)));
+  const s = Math.abs(Math.sin(rad(f.r)));
+  const w = f.w * c + f.h * s;
+  const h = f.w * s + f.h * c;
+  return { x: f.x + f.w / 2 - w / 2, y: f.y + f.h / 2 - h / 2, w, h };
+}
+
+// ---------------------------------------------------------------------------
+// Several elements at once
+
+export function boundsOf(frames: Frame[]): Frame {
+  const boxes = frames.map(outerBox);
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  const r = Math.max(...boxes.map((b) => b.x + b.w));
+  const btm = Math.max(...boxes.map((b) => b.y + b.h));
+  return { x, y, w: r - x, h: btm - y };
+}
+
+export const intersects = (a: Frame, b: Frame) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+export type AlignWhere = "left" | "center" | "right" | "top" | "middle" | "bottom";
+
+/** Aligns frames to each other (to the selection's bounds), using their visible boxes. */
+export function alignFrames(frames: Frame[], where: AlignWhere): Frame[] {
+  const b = boundsOf(frames);
+  return frames.map((f) => {
+    const o = outerBox(f);
+    const dx = where === "left" ? b.x - o.x : where === "center" ? b.x + b.w / 2 - (o.x + o.w / 2) : where === "right" ? b.x + b.w - (o.x + o.w) : 0;
+    const dy = where === "top" ? b.y - o.y : where === "middle" ? b.y + b.h / 2 - (o.y + o.h / 2) : where === "bottom" ? b.y + b.h - (o.y + o.h) : 0;
+    return { ...f, x: f.x + dx, y: f.y + dy };
+  });
+}
+
+/** Spreads frames so the gaps between them are equal (first and last stay put). Order is preserved. */
+export function distributeFrames(frames: Frame[], axis: "x" | "y"): Frame[] {
+  if (frames.length < 3) return frames;
+  const boxes = frames.map(outerBox);
+  const order = boxes.map((b, i) => ({ b, i })).sort((p, q) => (axis === "x" ? p.b.x - q.b.x : p.b.y - q.b.y));
+  const size = (b: Frame) => (axis === "x" ? b.w : b.h);
+  const start = axis === "x" ? order[0].b.x : order[0].b.y;
+  const last = order[order.length - 1].b;
+  const end = axis === "x" ? last.x + last.w : last.y + last.h;
+  const gap = (end - start - order.reduce((n, o) => n + size(o.b), 0)) / (order.length - 1);
+  const out = [...frames];
+  let cursor = start;
+  for (const { b, i } of order) {
+    const delta = cursor - (axis === "x" ? b.x : b.y);
+    out[i] = axis === "x" ? { ...frames[i], x: frames[i].x + delta } : { ...frames[i], y: frames[i].y + delta };
+    cursor += size(b) + gap;
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Snapping

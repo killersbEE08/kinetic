@@ -4,8 +4,8 @@ import type { NextConfig } from "next";
 // clerk.<your domain> in production) and uses Cloudflare Turnstile for bot checks.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.* https://challenges.cloudflare.com",
-  "connect-src 'self' https://*.clerk.accounts.dev https://clerk.* https://*.supabase.co",
+  "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.* https://challenges.cloudflare.com",
+  "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.* https://*.supabase.co",
   "img-src 'self' data: blob: https://img.clerk.com",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",

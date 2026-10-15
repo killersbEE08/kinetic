@@ -115,10 +115,10 @@ export function Stories() {
 const FAQ: [string, string][] = [
   ["Does Kinetic make up numbers?", "No. Every number on a slide is checked against what you pasted. Anything that isn't in your material gets a dashed outline and a Suggested label until you change or accept it."],
   ["Do you train AI on my notes?", "Kinetic doesn't train any models. With a Gemini key, your text is sent to Google's Gemini API only to write your deck."],
-  ["What can I give it?", "A prompt, or up to about 50,000 words of pasted notes. PDF, Word and spreadsheet upload is next on the roadmap."],
-  ["Can I edit slides by hand?", "Yes. Click any text on the canvas to edit it, swap layouts without losing content, edit chart data, and undo anything."],
+  ["What can I give it?", "A prompt, pasted notes (up to about 50,000 words), or files: PDF, Word, PowerPoint, Excel, CSV and text. Photos inside your files are kept and placed on slides."],
+  ["Can I edit slides by hand?", "Yes. Click a box to select it and click again to type. Add text, photos, shapes, icons, tables and charts; move, resize, rotate, align and group them; change fonts and colours; undo anything."],
   ["Are the sample decks real companies?", "No. Every company, person and number in the samples is fictional. Use them to see the structure, then make them yours."],
-  ["Can I export to PowerPoint or video?", "Not yet. Today you present from the browser. MP4 and PDF export are planned next, PowerPoint after that."],
+  ["Can I export to PowerPoint or video?", "PowerPoint and PDF, yes. The PowerPoint file keeps text, shapes, tables and charts editable, with animations and transitions. Video export is planned."],
   ["How do AI credits work?", "Generating a deck uses one credit per slide plus two for the outline. Each AI edit uses one. Credits reset monthly."],
   ["Can I cancel?", "Yes, at any time from the billing portal. You keep your plan until the end of the period you paid for."],
 ];

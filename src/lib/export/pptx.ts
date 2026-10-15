@@ -96,7 +96,7 @@ function addChart(pptx: PptxGenJS, slide: PptxGenJS.Slide, it: Extract<SceneItem
 const SHAPE_TYPE: Record<ShapeKind, string> = { rect: "rect", roundRect: "roundRect", ellipse: "ellipse", triangle: "triangle", diamond: "diamond", line: "line", arrow: "line", star: "star5" };
 
 type Fonts = (typeof FONTS)[keyof typeof FONTS];
-type Pos = { x: number; y: number; w: number; h: number };
+type Pos = { x: number; y: number; w: number; h: number; rotate?: number };
 
 function textOpts(t: SceneText, fonts: Fonts) {
   return {
@@ -139,6 +139,7 @@ function addTable(slide: PptxGenJS.Slide, it: Extract<SceneItem, { kind: "table"
       options: { ...textOpts(cell, fonts), valign: "middle" as const, fill: cell.fill ? { color: cell.fill.hex } : undefined, border: [border, border, border, border] as [typeof border, typeof border, typeof border, typeof border], margin: 0.08 },
     })),
   );
+  // PowerPoint tables can't be rotated; they export upright.
   slide.addTable(rows, { x: pos.x, y: pos.y, w: pos.w, colW: it.colW.map((w) => inch(w)), rowH: it.rows.map((r) => inch(r.h)), objectName: name, autoPage: false });
 }
 
@@ -181,7 +182,7 @@ export async function exportPptx(deck: Deck, opts: PptxOptions, onProgress?: (do
           name = `!!${it.owner.role}`;
           usedRoles.add(it.owner.role);
         }
-        const pos = { x: inch(it.box.x), y: inch(it.box.y), w: Math.max(0.01, inch(it.box.w)), h: Math.max(0.01, inch(it.box.h)) };
+        const pos = { x: inch(it.box.x), y: inch(it.box.y), w: Math.max(0.01, inch(it.box.w)), h: Math.max(0.01, inch(it.box.h)), ...(it.rotate ? { rotate: it.rotate } : {}) };
         let kind: "sp" | "pic" | "chart" = "sp";
 
         if (it.kind === "rect") {

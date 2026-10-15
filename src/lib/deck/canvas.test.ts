@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignToSlide, centeredFrame, duplicateElement, newChart, newIcon, newImage, newShape, newTable, newText, resizeFrame, snapMove, snapTargets } from "./canvas";
+import { alignFrames, alignToSlide, angleFrom, boundsOf, centeredFrame, distributeFrames, duplicateElement, intersects, newChart, newIcon, newImage, newShape, newTable, newText, normalizeAngle, outerBox, resizeFrame, resizeRotated, round, snapMove, snapTargets } from "./canvas";
 import { Deck, Element, FREE_SLOT, isFree } from "./schema";
 import { composeSlide, swapLayout, toSlotted } from "./compose";
 import { runQa } from "./qa";
@@ -56,6 +56,68 @@ describe("snapping and resizing", () => {
     expect(alignToSlide(f, "center").x).toBe(860);
     expect(alignToSlide(f, "bottom").y).toBe(980);
     expect(alignToSlide(f, "right").x).toBe(1720);
+  });
+});
+
+describe("rotation", () => {
+  it("normalises angles and snaps to steps", () => {
+    expect(normalizeAngle(370)).toBe(10);
+    expect(normalizeAngle(-190)).toBe(170);
+    const c = { x: 0, y: 0 };
+    expect(angleFrom(c, { x: 0, y: -100 }, false)).toBe(0); // handle straight up
+    expect(angleFrom(c, { x: 100, y: 0 }, false)).toBe(90);
+    expect(angleFrom(c, { x: 100, y: -3 }, false)).toBe(90); // near a right angle snaps
+    expect(angleFrom(c, { x: 100, y: -60 }, true) % 15).toBe(0);
+  });
+
+  it("keeps the opposite corner fixed on screen when resizing a rotated box", () => {
+    const start = { x: 100, y: 100, w: 400, h: 200, r: 90 };
+    const corner = (f: { x: number; y: number; w: number; h: number; r?: number }, lx: number, ly: number) => {
+      const cx = f.x + f.w / 2, cy = f.y + f.h / 2, a = ((f.r ?? 0) * Math.PI) / 180;
+      const vx = lx - cx, vy = ly - cy;
+      return { x: cx + vx * Math.cos(a) - vy * Math.sin(a), y: cy + vx * Math.sin(a) + vy * Math.cos(a) };
+    };
+    const before = corner(start, start.x, start.y); // top-left in local axes = anchor for "se"
+    const next = resizeRotated(start, "se", 0, 100, false); // screen-down = local +x when rotated 90°
+    expect(next.w).toBeCloseTo(500);
+    expect(next.h).toBeCloseTo(200);
+    const after = corner(next, next.x, next.y);
+    expect(after.x).toBeCloseTo(before.x);
+    expect(after.y).toBeCloseTo(before.y);
+    expect(round(next).r).toBe(90);
+  });
+
+  it("measures the visible box of a rotated frame", () => {
+    const o = outerBox({ x: 0, y: 0, w: 200, h: 100, r: 90 });
+    expect(o.w).toBeCloseTo(100);
+    expect(o.h).toBeCloseTo(200);
+    expect(o.x + o.w / 2).toBeCloseTo(100);
+  });
+});
+
+describe("several elements", () => {
+  const fs = [
+    { x: 0, y: 0, w: 100, h: 50 },
+    { x: 300, y: 100, w: 50, h: 50 },
+    { x: 900, y: 40, w: 100, h: 100 },
+  ];
+  it("computes bounds and overlap", () => {
+    expect(boundsOf(fs)).toEqual({ x: 0, y: 0, w: 1000, h: 150 });
+    expect(intersects(fs[0], { x: 50, y: 25, w: 10, h: 10 })).toBe(true);
+    expect(intersects(fs[0], fs[1])).toBe(false);
+  });
+  it("aligns to each other", () => {
+    expect(alignFrames(fs, "left").map((f) => f.x)).toEqual([0, 0, 0]);
+    expect(alignFrames(fs, "bottom").map((f) => f.y + f.h)).toEqual([150, 150, 150]);
+    expect(alignFrames(fs, "center").map((f) => f.x + f.w / 2)).toEqual([500, 500, 500]);
+  });
+  it("distributes with equal gaps", () => {
+    const d = distributeFrames(fs, "x");
+    expect(d[0].x).toBe(0);
+    expect(d[2].x).toBe(900);
+    const gap1 = d[1].x - (d[0].x + d[0].w);
+    const gap2 = d[2].x - (d[1].x + d[1].w);
+    expect(gap1).toBeCloseTo(gap2);
   });
 });
 

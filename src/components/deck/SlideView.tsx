@@ -423,7 +423,10 @@ function FreeLayer({ ctx }: { ctx: RenderCtx }) {
               justifyContent: el.type === "text" ? VALIGN[st?.valign ?? "top"] : "stretch",
               borderRadius: clip ? st?.radius : undefined,
               overflow: clip ? "hidden" : undefined,
+              transform: f.r ? `rotate(${f.r}deg)` : undefined,
             }}
+            data-free-for={el.id}
+            data-rot={f.r || undefined}
           >
             <ElementNode el={el} ctx={ctx} free className={el.type === "text" ? `${ROLE_CLASS[el.role] ?? "k-body"} k-free-text ${st?.font === "heading" ? "k-hfont" : ""}` : "h-full w-full"} variant={VARIANT_BY_SLOT[key]} big={BIG_NUMBER_SLOTS.has(key) || (isKpiSingle(el) && f.h > 200)} />
           </div>
