@@ -1,0 +1,11 @@
+# Local Workers runtime (`pnpm preview`) reads this file. Copy to .dev.vars.
+# In production, set secrets with `pnpm exec wrangler secret put <NAME>` instead.
+NEXTJS_ENV=development
+NEXT_PUBLIC_APP_URL=http://localhost:8787
+CLERK_SECRET_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+GEMINI_API_KEY=
+DODO_PAYMENTS_API_KEY=
+DODO_PAYMENTS_WEBHOOK_KEY=
+DODO_PRODUCT_PRO=
+DODO_PRODUCT_TEAM=

@@ -1,3 +1,17 @@
 allowBuilds:
+  '@google/genai': false
+  # core-js (pulled in by jspdf) only prints a message on install; nothing to build.
+  core-js: false
+  esbuild: true
+  protobufjs: false
   sharp: false
   unrs-resolver: false
+  workerd: true
+minimumReleaseAgeExclude:
+  - '@clerk/nextjs@7.9.15'
+  - miniflare@5.20261012.0-beta
+  - wrangler@4.151.0
+  - lucide-react@1.57.0
+# Flat node_modules (no symlinks). Needed for `opennextjs-cloudflare build` on Windows
+# without Developer Mode, because it copies traced files and can't create symlinks there.
+nodeLinker: hoisted

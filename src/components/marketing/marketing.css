@@ -1,0 +1,315 @@
+/*
+ * Landing page design language. This is the ONE file where docs/06's gradient/texture rule is
+ * relaxed (approved by the product owner): textures appear only inside demo panels, the
+ * announcement bar, the hero's lower edge, story cards and the closing CTA. White content
+ * areas stay flat. scripts/slop-lint.mjs allow-lists this file only.
+ */
+
+/* In Tailwind's components layer so utility classes (md:hidden, h-[52px]…) still win. */
+@layer components {
+.m-root {
+  --m-ink: #101114;
+  --m-gray: #70747d;
+  --m-line: #e7e9ed;
+  --m-soft: #f6f7f9;
+  --m-blue: #2563d9;
+  --m-blue-2: #3e7df0;
+  --m-purple: #5524df;
+  --m-dark: #0c0d10;
+  --m-green: #1fbf75;
+  --m-lime: #c6f24e;
+  color-scheme: light;
+  overflow-x: clip;
+  background: #fff;
+  color: var(--m-ink);
+}
+
+.m-frame {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+/* Faint vertical guide lines that run through long sections. */
+.m-ruled {
+  position: relative;
+}
+.m-ruled::before,
+.m-ruled::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--m-line);
+  pointer-events: none;
+}
+.m-ruled::before {
+  left: max(24px, calc(50% - 560px));
+}
+.m-ruled::after {
+  right: max(24px, calc(50% - 560px));
+}
+
+.m-h1 {
+  font-size: clamp(40px, 6.2vw, 72px);
+  line-height: 1.06;
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.m-h2 {
+  font-size: clamp(32px, 4.2vw, 50px);
+  line-height: 1.1;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.m-h3 {
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.m-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--m-gray);
+}
+.m-lead {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--m-gray);
+}
+.m-small {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--m-gray);
+}
+.m-accent {
+  color: var(--m-blue);
+}
+.m-mono {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+/* Pills */
+.m-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: transform 160ms cubic-bezier(0.2, 0, 0, 1), background-color 160ms, box-shadow 160ms, border-color 160ms;
+}
+.m-pill:hover {
+  transform: translateY(-1px);
+}
+.m-pill:active {
+  transform: none;
+}
+.m-pill-dark {
+  background: var(--m-ink);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(16, 17, 20, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.m-pill-dark:hover {
+  background: #23252b;
+}
+.m-pill-light {
+  background: #fff;
+  color: var(--m-ink);
+  border: 1px solid var(--m-line);
+}
+.m-pill-light:hover {
+  border-color: #c9ccd3;
+}
+.m-pill-sm {
+  min-height: 38px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+.m-card {
+  border: 1px solid var(--m-line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 17, 20, 0.04), 0 8px 24px -12px rgba(16, 17, 20, 0.08);
+}
+
+/* ---------- Textures ---------- */
+/* Water-like caustics and fine grain, from SVG noise (no images to download). */
+.m-tex {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.m-tex::before,
+.m-tex::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+.m-tex::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1440' height='420'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.005 0.02' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2.2 -0.62'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23c)'/%3E%3C/svg%3E");
+  background-size: 1440px 420px;
+  opacity: 0.55;
+  mix-blend-mode: soft-light;
+}
+.m-tex::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.12;
+  mix-blend-mode: overlay;
+}
+
+.m-tex-blue {
+  background:
+    radial-gradient(120% 90% at 20% 0%, #5b95ff 0%, transparent 60%),
+    radial-gradient(90% 80% at 100% 100%, #1b46b8 0%, transparent 65%),
+    #2a63e0;
+  color: #fff;
+}
+.m-tex-purple {
+  background:
+    radial-gradient(110% 90% at 0% 0%, #8a5cff 0%, transparent 60%),
+    radial-gradient(90% 90% at 100% 100%, #2f12a0 0%, transparent 60%),
+    #5524df;
+  color: #fff;
+}
+.m-tex-green {
+  background: radial-gradient(100% 90% at 0% 0%, #5ee6a4 0%, transparent 60%), #14a463;
+  color: #04170d;
+}
+.m-tex-lime {
+  background: radial-gradient(100% 90% at 100% 0%, #e7ff9a 0%, transparent 60%), #b9e83a;
+  color: #161d02;
+}
+.m-tex-dark {
+  background: radial-gradient(80% 60% at 50% 0%, rgba(62, 125, 240, 0.18) 0%, transparent 70%), var(--m-dark);
+  color: #fff;
+}
+
+/* Hero: pale blue wash fading into a textured blue lower edge. */
+.m-hero-bg {
+  background: linear-gradient(180deg, #ffffff 0%, #eef3fd 42%, #dbe7fc 62%, #4f86ef 86%, #2a63e0 100%);
+}
+.m-hero-bg::before {
+  top: 55%;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 45%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 45%);
+  opacity: 0.85;
+}
+
+.m-glass {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 60px -24px rgba(23, 59, 140, 0.45), 0 2px 6px rgba(16, 17, 20, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Dark code pane inside coloured panels. */
+.m-code {
+  background: #0f1117;
+  color: #d6d9e0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+}
+.m-code .k {
+  color: #8fb4ff;
+}
+.m-code .s {
+  color: #b7e88a;
+}
+.m-code .n {
+  color: #f5c37a;
+}
+.m-code .c {
+  color: #6b7280;
+}
+
+/* Footer wordmark: big outlined letters cropped by the bottom edge. */
+.m-wordmark {
+  font-size: clamp(120px, 24vw, 340px);
+  line-height: 0.78;
+  font-weight: 600;
+  letter-spacing: -0.06em;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.18);
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Accordion plus → close */
+.m-plus {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.m-plus::before,
+.m-plus::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6.25px;
+  width: 14px;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 1px;
+  transition: transform 240ms cubic-bezier(0.3, 0, 0, 1);
+}
+.m-plus::after {
+  transform: rotate(90deg);
+}
+[aria-expanded="true"] > .m-plus {
+  transform: rotate(45deg);
+  transition: transform 240ms cubic-bezier(0.3, 0, 0, 1);
+}
+.m-acc-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 280ms cubic-bezier(0.3, 0, 0, 1);
+}
+.m-acc-body[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.m-acc-body > div {
+  overflow: hidden;
+}
+
+.m-fade {
+  animation: m-fade 320ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+@keyframes m-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m-pill,
+  .m-pill:hover {
+    transform: none;
+  }
+  .m-acc-body,
+  .m-plus::before,
+  .m-plus::after,
+  .m-fade {
+    transition: none;
+    animation: none;
+  }
+}
+
+}

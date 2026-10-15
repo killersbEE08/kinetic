@@ -1,0 +1,38 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "kinetic",
+	"compatibility_date": "2026-10-01",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "kinetic"
+		}
+	],
+	// Private photo uploads (bucket "kinetic-assets"). "remote": true makes `pnpm dev` use the
+	// real bucket in your Cloudflare account; remove it to use a local copy under .wrangler/ instead.
+	"r2_buckets": [
+		{
+			"binding": "ASSETS_BUCKET",
+			"bucket_name": "kinetic-assets",
+			"remote": true
+		}
+	],	// Plain (non-secret) config. Secrets are set with `wrangler secret put <NAME>`:
+	//   CLERK_SECRET_KEY, SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY,
+	//   DODO_PAYMENTS_API_KEY, DODO_PAYMENTS_WEBHOOK_KEY
+	"vars": {
+		"GEMINI_MODEL": "gemini-3.8-flash",
+		"DODO_PAYMENTS_ENVIRONMENT": "test_mode"
+	},
+	"observability": {
+		"enabled": true
+	}
+}
