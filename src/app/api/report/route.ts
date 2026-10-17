@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { enforceLimit, clientIp } from "@/lib/server/limits";
 import { HttpError } from "@/lib/server/auth-error";
+import { sendToSentry } from "@/lib/server/monitor";
 
 // POST /api/report: browser error reports and CSP violation reports. Logged as structured JSON
 // (visible in Cloudflare Workers Observability and `wrangler tail`). No auth: errors can happen
@@ -46,5 +47,6 @@ export async function POST(req: Request): Promise<Response> {
   if (!parsed.success) return new Response(null, { status: 400 });
   const r = parsed.data;
   console.error(JSON.stringify({ event: "client_error", kind: r.kind, message: r.message, stack: r.stack, route: scrubPath(r.route), release: r.release, ua: clip(req.headers.get("user-agent"), 160) }));
+  sendToSentry({ type: r.kind === "unhandledrejection" ? "UnhandledRejection" : "BrowserError", message: r.message, stack: r.stack }, { side: "browser", route: scrubPath(r.route) });
   return new Response(null, { status: 204 });
 }

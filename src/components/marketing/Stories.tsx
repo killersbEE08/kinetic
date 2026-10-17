@@ -199,11 +199,11 @@ export function Footer() {
             Kinetic
           </span>
           <p className="mt-4 max-w-[300px] text-[14px] leading-[1.6] text-white/55">Turns your notes into an animated deck you can edit and present. Every number on a slide comes from your material.</p>
-          <p className="mt-6 text-[12px] text-white/40">{TEMPLATES.length} sample decks · 20 layouts · 6 themes</p>
+          <p className="mt-6 text-[12px] text-white/60">{TEMPLATES.length} sample decks · 20 layouts · 6 themes</p>
         </div>
         {groups.map(([g, links]) => (
           <nav key={g} aria-label={g}>
-            <h2 className="text-[13px] font-medium text-white/40">{g}</h2>
+            <h2 className="text-[13px] font-medium text-white/60">{g}</h2>
             <ul className="mt-4 space-y-2.5 text-[14px]">
               {links.map(([l, h]) => (
                 <li key={l}>
@@ -214,9 +214,9 @@ export function Footer() {
           </nav>
         ))}
       </div>
-      <div className="m-frame flex flex-wrap justify-between gap-4 border-t border-white/10 py-6 text-[12px] text-white/40">
+      <div className="m-frame flex flex-wrap justify-between gap-4 border-t border-white/10 py-6 text-[12px] text-white/60">
         <p>© {new Date().getFullYear()} Kinetic. Sample decks use fictional companies, people and numbers.</p>
-        <p>Built on Cloudflare Workers, Supabase and Gemini.</p>
+        <p><a href="/report" className="hover:text-white">Report a shared deck</a> · Built on Cloudflare Workers, Supabase and Gemini.</p>
       </div>
       <div className="m-frame -mb-[0.2em] pt-4" aria-hidden="true">
         <p className="m-wordmark">Kinetic</p>

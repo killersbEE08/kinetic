@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Play } from "lucide-react";
 import type { ChartElement, Deck, Element, Frame, Motion, ShapeKind, Slide } from "@/lib/deck/schema";
 import { ElementPanel, MultiPanel } from "./ElementPanel";
 import { StockSearch, UnsplashCredit } from "./StockSearch";
 import { EASINGS, MOTION_PRESETS, TRANSITIONS, TRIGGERS } from "@/lib/deck/schema";
 import type { PatchOp } from "@/lib/deck/patch";
 import { LAYOUTS, getLayout } from "@/lib/deck/layouts";
-import { THEMES } from "@/lib/deck/themes";
+import { THEMES, deckTheme } from "@/lib/deck/themes";
+import { SlideView } from "@/components/deck/SlideView";
+import { Modal } from "./ui";
 import { ASSET_PREFIX, MEDIA } from "@/lib/deck/media";
 import { motionFor } from "@/lib/deck/motion";
 import { swapLayout } from "@/lib/deck/compose";
@@ -38,19 +41,22 @@ const TRANSITION_LABEL: Record<Slide["transition"], string> = { cut: "Cut", fade
 
 export const SHAPE_LABEL: Record<ShapeKind, string> = { rect: "Rectangle", roundRect: "Rounded rectangle", ellipse: "Ellipse", triangle: "Triangle", diamond: "Diamond", line: "Line", arrow: "Arrow", star: "Star" };
 
+const SLOT_LABEL: Record<string, string> = { title: "Title", subtitle: "Subtitle", body: "Text", points: "Points", media: "Photo", statement: "Statement", quote: "Quote", attribution: "Attribution", chart: "Chart", kpis: "Numbers", label: "Label", caption: "Caption" };
+const slotName = (s: string) => SLOT_LABEL[s] ?? s.charAt(0).toUpperCase() + s.slice(1).replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+
 export function elementLabel(el: Element): string {
   if (el.slot === "free" && el.type === "text") return `Text: ${el.content.slice(0, 32)}${el.content.length > 32 ? "…" : ""}`;
   if (el.slot === "free" && el.type === "image") return "Photo";
   if (el.slot === "free" && el.type === "chart") return el.kind === "kpi" ? "Big number" : `${el.kind === "bar" ? "Bar" : "Line"} chart`;
   if (el.slot === "free" && el.type === "bullets") return `List: ${el.items.length} points`;
-  if (el.type === "text") return `${el.slot}: ${el.content.slice(0, 32)}${el.content.length > 32 ? "…" : ""}`;
-  if (el.type === "bullets") return `${el.slot}: ${el.items.length} points`;
-  if (el.type === "image") return `${el.slot}: photo`;
-  if (el.type === "mockup") return `${el.slot}: ${el.device} screen`;
+  if (el.type === "text") return `${slotName(el.slot)}: ${el.content.slice(0, 32)}${el.content.length > 32 ? "…" : ""}`;
+  if (el.type === "bullets") return `${slotName(el.slot)}: ${el.items.length} points`;
+  if (el.type === "image") return slotName(el.slot) === "Photo" ? "Photo" : `${slotName(el.slot)}: photo`;
+  if (el.type === "mockup") return `Product screen (${el.device})`;
   if (el.type === "shape") return `Shape: ${el.text ? el.text.slice(0, 24) : SHAPE_LABEL[el.shape]}`;
   if (el.type === "icon") return `Icon: ${el.name}`;
   if (el.type === "table") return `Table: ${el.rows.length} × ${el.rows[0]?.length ?? 0}`;
-  return `${el.slot}: ${el.kind === "kpi" ? "numbers" : `${el.kind} chart`}`;
+  return `${slotName(el.slot)}: ${el.kind === "kpi" ? "numbers" : `${el.kind} chart`}`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -62,17 +68,68 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">{children}</h3>;
+}
+
+/** Current layout as a card; opens a visual grid of every layout, previewed with this slide's content. */
+function LayoutPicker({ deck, slide, onPick }: { deck: Deck; slide: Slide; onPick: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const theme = deckTheme(deck);
+  const current = getLayout(slide.layout);
+  const groups = LAYOUTS.reduce<Record<string, typeof LAYOUTS>>((g, l) => ((g[l.category] ??= []).push(l), g), {});
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="flex w-full items-center gap-3 rounded-[10px] border border-line p-2 text-left hover:border-ink-2" aria-haspopup="dialog">
+        <span className="w-[88px] flex-none overflow-hidden rounded-[5px] border border-line">
+          <SlideView slide={slide} theme={theme} intensity={deck.motionIntensity} mode="static" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[11px] text-ink-2">Layout · {current.category}</span>
+          <span className="block truncate text-[13px] font-semibold">{current.name}</span>
+        </span>
+        <span className="text-[12px] font-medium text-accent">Change</span>
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Choose a layout" width="w-[min(880px,calc(100vw-32px))]">
+        <p className="mb-4 text-[13px] text-ink-2">Previews use this slide&rsquo;s content. Anything a layout can&rsquo;t show moves to speaker notes, and you can undo.</p>
+        <div className="space-y-5">
+          {Object.entries(groups).map(([cat, list]) => (
+            <section key={cat}>
+              <h4 className="mb-2 text-[12px] font-semibold text-ink-2">{cat}</h4>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {list.map((l) => {
+                  const on = l.id === slide.layout;
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => {
+                        if (!on) onPick(l.id);
+                        setOpen(false);
+                      }}
+                      className="group text-left"
+                    >
+                      <span className={`block overflow-hidden rounded-[8px] border-2 ${on ? "border-accent" : "border-line group-hover:border-ink-2"}`}>
+                        <SlideView slide={on ? slide : swapLayout(slide, l.id)} theme={theme} intensity={deck.motionIntensity} mode="static" />
+                      </span>
+                      <span className={`mt-1 block truncate text-[12px] ${on ? "font-semibold text-accent" : ""}`}>{l.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 export function DesignPanel({ deck, slideIndex, selected, selectedIds = [], onSelectIds, commit, frame = null, onSelect }: { deck: Deck; slideIndex: number; selected: Element | null; selectedIds?: string[]; onSelectIds?: (ids: string[]) => void; commit: Commit; frame?: Frame | null; onSelect?: (id: string | null) => void }) {
   const slide = deck.slides[slideIndex];
-  const [title, setTitle] = useState(deck.title);
-  // Re-sync the draft when the title changes elsewhere (undo, AI edit).
-  const [seenTitle, setSeenTitle] = useState(deck.title);
-  if (seenTitle !== deck.title) {
-    setSeenTitle(deck.title);
-    setTitle(deck.title);
-  }
   const ei = selected ? slide.elements.findIndex((e) => e.id === selected.id) : -1;
 
   if (selectedIds.length > 1) {
@@ -104,69 +161,60 @@ export function DesignPanel({ deck, slideIndex, selected, selectedIds = [], onSe
 
   return (
     <div className="space-y-6">
-      <Field label="Deck title">
-        <input
-          className="field"
-          value={title}
-          maxLength={200}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => title.trim() && title !== deck.title && commit([{ op: "replace", path: "/title", value: title.trim() }], { label: "Rename deck" })}
-        />
-      </Field>
+      <section>
+        <SectionTitle>This slide</SectionTitle>
+        <LayoutPicker deck={deck} slide={slide} onPick={(id) => commit([{ op: "replace", path: `/slides/${slideIndex}`, value: swapLayout(slide, id) }], { label: "Change layout" })} />
+        <p className="mt-1.5 text-[12px] leading-[17px] text-ink-2">Content that doesn&rsquo;t fit the new layout moves to speaker notes.</p>
+      </section>
 
-      <Field label="Layout">
-        <select
-          className="field"
-          value={slide.layout}
-          onChange={(e) => commit([{ op: "replace", path: `/slides/${slideIndex}`, value: swapLayout(slide, e.target.value) }], { label: "Change layout" })}
-        >
-          {LAYOUTS.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.category} · {l.name}
-            </option>
-          ))}
-        </select>
-        <span className="mt-1 block text-[12px] text-ink-2">Content that doesn&rsquo;t fit the new layout moves to speaker notes.</span>
-      </Field>
+      <BackgroundPicker key={`bg-${slide.id}`} deck={deck} slide={slide} slideIndex={slideIndex} commit={commit} />
 
-      <fieldset>
-        <legend className="mb-2 text-[13px] font-medium text-ink-2">Theme</legend>
+      <section>
+        <SectionTitle>Deck theme</SectionTitle>
         <div className="grid grid-cols-3 gap-2">
-          {THEMES.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              aria-pressed={deck.themeId === t.id}
-              onClick={() => commit([{ op: "replace", path: "/themeId", value: t.id }], { label: "Change theme" })}
-              className={`rounded-[8px] border p-2 text-left text-[12px] ${deck.themeId === t.id ? "border-accent" : "border-line hover:border-ink-2"}`}
-            >
-              <span className="mb-1 flex h-6 overflow-hidden rounded-[4px]" aria-hidden="true">
-                <span className="flex-1" style={{ background: t.colors.bg }} />
-                <span className="w-2" style={{ background: t.colors.text }} />
-                <span className="w-2" style={{ background: t.colors.accent }} />
-              </span>
-              {t.name}
-            </button>
-          ))}
+          {THEMES.map((t) => {
+            const on = deck.themeId === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => commit([{ op: "replace", path: "/themeId", value: t.id }], { label: "Change theme" })}
+                className={`group rounded-[10px] border p-1.5 text-left text-[12px] transition-colors ${on ? "border-accent ring-2 ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]" : "border-line hover:border-ink-2"}`}
+              >
+                <span className="relative mb-1.5 flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-[6px] p-1.5" style={{ background: t.colors.bg }} aria-hidden="true">
+                  <span className="mb-1 block h-1.5 w-3/4 rounded-full" style={{ background: t.colors.text }} />
+                  <span className="block h-1 w-1/2 rounded-full opacity-60" style={{ background: t.colors.text }} />
+                  <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full" style={{ background: t.colors.accent }} />
+                </span>
+                <span className={`block truncate px-0.5 ${on ? "font-semibold" : ""}`}>{t.name}</span>
+              </button>
+            );
+          })}
         </div>
-      </fieldset>
+      </section>
 
       {selected?.type === "chart" && ei >= 0 && <ChartEditor el={selected} path={`/slides/${slideIndex}/elements/${ei}`} commit={commit} />}
       {selected?.type === "image" && ei >= 0 && <PhotoPicker el={selected} path={`/slides/${slideIndex}/elements/${ei}`} commit={commit} />}
       {!selected && <AddPhoto key={slide.id} slide={slide} slideIndex={slideIndex} commit={commit} />}
-      {!selected && slide.elements.some((e) => e.type === "image") && <p className="text-[12px] text-ink-2">Click the photo on the slide to swap it for one of yours.</p>}
+      {!selected && slide.elements.some((e) => e.type === "image") && <p className="-mt-3 text-[12px] text-ink-2">Tip: click the photo on the slide to swap it for one of yours.</p>}
       {selected?.type === "mockup" && <p className="rounded-[10px] border border-line p-3 text-[13px] text-ink-2">Product screens are edited by asking for a change in the Ask tab, for example &ldquo;rename the first row to Invoices&rdquo;.</p>}
-      <BrandKitPicker deck={deck} commit={commit} />
-      {deck.brand && (
-        <div className="flex items-center justify-between gap-3 rounded-[10px] border border-line p-3 text-[13px]">
-          <span>
-            Brand: <strong className="font-medium">{deck.brand.name}</strong>
-          </span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => commit([{ op: "remove", path: "/brand" }], { label: "Remove brand" })}>
-            Use theme colours
-          </button>
-        </div>
-      )}
+      <section>
+        <SectionTitle>Brand</SectionTitle>
+        {deck.brand && (
+          <div className="mb-3 flex items-center gap-2.5 rounded-[10px] border border-line p-2.5 text-[13px]">
+            <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[6px]" style={{ background: deck.brand.primary }} aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold">{deck.brand.name}</span>
+              <span className="block text-[11px] uppercase text-ink-2">{deck.brand.primary}</span>
+            </span>
+            <button type="button" className="btn btn-ghost btn-sm min-h-7 px-2 text-[12px]" onClick={() => commit([{ op: "remove", path: "/brand" }], { label: "Remove brand" })}>
+              Remove
+            </button>
+          </div>
+        )}
+        <BrandKitPicker deck={deck} commit={commit} />
+      </section>
 
       {selected?.aiSuggested && ei >= 0 && (
         <div className="rounded-[10px] border border-dashed border-accent p-3 text-[13px]">
@@ -177,6 +225,85 @@ export function DesignPanel({ deck, slideIndex, selected, selectedIds = [], onSe
         </div>
       )}
     </div>
+  );
+}
+
+/** A slide's own background colour or photo. Text switches to light or dark to stay readable. */
+function BackgroundPicker({ deck, slide, slideIndex, commit }: { deck: Deck; slide: Slide; slideIndex: number; commit: Commit }) {
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const bg = slide.background;
+  const path = `/slides/${slideIndex}/background`;
+  const theme = deckTheme(deck);
+  const set = (value: NonNullable<Slide["background"]>, label: string) => commit([{ op: "add", path, value }], { label });
+  const clear = () => bg && commit([{ op: "remove", path }], { label: "Use theme background" });
+  const swatches = [...new Set([theme.colors.bg, "#ffffff", "#f5f3ee", "#0b0b0c", "#14213d", theme.colors.accent, deck.brand?.primary, deck.brand?.secondary].filter((c): c is string => !!c && /^#[0-9a-fA-F]{6}$/.test(c)).map((c) => c.toLowerCase()))].slice(0, 8);
+  const [dim, setDim] = useState(bg?.dim ?? 0.35);
+  const saveDim = () => bg?.image && dim !== (bg.dim ?? 0.35) && set({ ...bg, dim }, "Darken background photo");
+  return (
+    <section>
+      <div className="flex items-start justify-between">
+        <SectionTitle>Background</SectionTitle>
+        {bg && (
+          <button type="button" className="text-[12px] font-medium text-ink-2 hover:text-ink" onClick={clear}>
+            Reset
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Background colour">
+        <button type="button" role="radio" aria-checked={!bg} title="Theme background" onClick={clear} className={`flex h-7 items-center rounded-full border px-2.5 text-[11.5px] font-medium ${!bg ? "border-accent text-ink" : "border-line text-ink-2 hover:text-ink"}`}>
+          Theme
+        </button>
+        {swatches.map((c) => {
+          const on = !bg?.image && bg?.color?.toLowerCase() === c;
+          return (
+            <button key={c} type="button" role="radio" aria-checked={on} aria-label={`Background ${c}`} title={c} onClick={() => set({ color: c }, "Change background colour")} className={`h-7 w-7 rounded-full border border-line ${on ? "ring-2 ring-accent ring-offset-2 ring-offset-[var(--surface)]" : ""}`} style={{ background: c }} />
+          );
+        })}
+        <label className="relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-dashed border-ink-2 text-[14px] text-ink-2 hover:text-ink" title="Pick any colour">
+          +
+          <input type="color" aria-label="Custom background colour" className="absolute inset-0 cursor-pointer opacity-0" value={bg?.color ?? theme.colors.bg} onChange={(e) => set({ ...(bg?.image ? { image: bg.image, dim: bg.dim } : {}), color: e.target.value }, "Change background colour")} />
+        </label>
+      </div>
+
+      <div className="mt-3 rounded-[10px] border border-line p-2.5">
+        {bg?.image ? (
+          <>
+            <div className="flex items-center gap-2.5">
+              <span className="w-[72px] flex-none overflow-hidden rounded-[5px] border border-line">
+                <SlideView slide={{ ...slide, elements: [] }} theme={theme} intensity={deck.motionIntensity} mode="static" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="line-clamp-2 text-[12.5px] leading-[17px]">{bg.image.alt}</span>
+                <span className="mt-1 flex gap-3 text-[12px] font-medium">
+                  <button type="button" className="text-accent hover:underline" onClick={() => setPhotoOpen(true)}>Change</button>
+                  <button type="button" className="text-ink-2 hover:text-danger" onClick={() => (bg.color ? set({ color: bg.color }, "Remove background photo") : clear())}>Remove</button>
+                </span>
+              </span>
+            </div>
+            <label className="mt-2.5 flex items-center gap-2.5 text-[12px] text-ink-2">
+              Darken
+              <input type="range" min={0} max={0.85} step={0.05} value={dim} onChange={(e) => setDim(Number(e.target.value))} onPointerUp={saveDim} onKeyUp={saveDim} className="flex-1 accent-[var(--accent)]" aria-label="Darken background photo" />
+              <span className="tabular w-9 text-right">{Math.round(dim * 100)}%</span>
+            </label>
+            {bg.image.credit && <UnsplashCredit credit={bg.image.credit} className="mt-2" />}
+          </>
+        ) : (
+          <button type="button" className="btn btn-secondary btn-sm min-h-8 w-full text-[12px]" onClick={() => setPhotoOpen(true)}>
+            Use a photo as the background
+          </button>
+        )}
+      </div>
+      <p className="mt-1.5 text-[12px] leading-[17px] text-ink-2">Only this slide. Text turns light or dark so it stays readable.</p>
+      <Modal open={photoOpen} onClose={() => setPhotoOpen(false)} title="Background photo">
+        <PhotoChooser
+          value={bg?.image?.src}
+          onChoose={(p) => {
+            set({ ...(bg?.color ? { color: bg.color } : {}), image: { src: p.src, alt: p.alt, focal: p.focal ?? [0.5, 0.5], ...(p.credit ? { credit: p.credit } : {}) }, dim: bg?.dim ?? 0.35 }, "Set background photo");
+            setPhotoOpen(false);
+          }}
+        />
+      </Modal>
+    </section>
   );
 }
 
@@ -450,9 +577,12 @@ export function MotionPanel({ deck, slideIndex, selectedId, onSelect, commit, on
     );
   };
 
+
+  const ctl = "field h-9 py-0 text-[13px]";
   return (
     <div className="space-y-6">
-      <Field label="Deck motion">
+      <section>
+        <SectionTitle>Whole deck</SectionTitle>
         <Segmented
           size="sm"
           label="Motion intensity"
@@ -464,75 +594,98 @@ export function MotionPanel({ deck, slideIndex, selectedId, onSelect, commit, on
             { value: "expressive", label: "Expressive" },
           ]}
         />
-      </Field>
+      </section>
 
-      <Field label="Transition into this slide">
-        <select className="field" value={slide.transition} onChange={(e) => commit([{ op: "replace", path: `/slides/${slideIndex}/transition`, value: e.target.value }], { label: "Change transition" })}>
-          {TRANSITIONS.map((t) => (
-            <option key={t} value={t}>{TRANSITION_LABEL[t]}</option>
-          ))}
-        </select>
-      </Field>
-
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-[13px] font-medium text-ink-2">Build order</h3>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onPreview}>Preview</button>
+      <section>
+        <SectionTitle>Transition into this slide</SectionTitle>
+        <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="Transition into this slide">
+          {TRANSITIONS.map((t) => {
+            const on = slide.transition === t;
+            return (
+              <button key={t} type="button" role="radio" aria-checked={on} onClick={() => !on && commit([{ op: "replace", path: `/slides/${slideIndex}/transition`, value: t }], { label: "Change transition" })} className={`h-8 rounded-[8px] border text-[12px] font-medium transition-colors ${on ? "border-accent bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] text-ink" : "border-line text-ink-2 hover:border-ink-2 hover:text-ink"}`}>
+                {TRANSITION_LABEL[t]}
+              </button>
+            );
+          })}
         </div>
-        <ol className="space-y-2">
+      </section>
+
+      <section>
+        <div className="mb-2.5 flex items-center justify-between">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">Build order</h3>
+          <button type="button" className="btn btn-secondary btn-sm min-h-7 gap-1 px-2.5 text-[12px]" onClick={onPreview}>
+            <Play size={12} aria-hidden="true" />
+            Preview
+          </button>
+        </div>
+        <ol className="space-y-1.5">
           {ordered.map(({ el, i, m }, pos) => {
             const open = selectedId === el.id;
+            const label = elementLabel(el);
             return (
-              <li key={el.id} className={`rounded-[10px] border ${open ? "border-accent" : "border-line"}`}>
-                <div className="flex items-center gap-1 p-2">
-                  <button type="button" className="min-w-0 flex-1 truncate text-left text-[13px]" onClick={() => onSelect(el.id)} aria-expanded={open}>
-                    <span className="tabular mr-2 text-ink-2">{pos + 1}</span>
-                    {elementLabel(el)}
+              <li key={el.id} className={`overflow-hidden rounded-[10px] border transition-colors ${open ? "border-accent shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_12%,transparent)]" : "border-line hover:border-[color-mix(in_srgb,var(--ink-2)_50%,var(--line))]"}`}>
+                <div className="flex items-center gap-1 py-1.5 pl-2 pr-1">
+                  <span className={`tabular flex h-5 w-5 flex-none items-center justify-center rounded-full text-[11px] font-semibold ${open ? "bg-accent text-white" : "bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] text-ink-2"}`} aria-hidden="true">{pos + 1}</span>
+                  <button type="button" className="min-w-0 flex-1 px-1 text-left" onClick={() => onSelect(el.id)} aria-expanded={open} title={label}>
+                    <span className="block truncate text-[13px] font-medium">{label}</span>
+                    <span className="block truncate text-[11.5px] text-ink-2">
+                      {m.preset === "none" ? "No animation" : `${PRESET_LABEL[m.preset]} · ${TRIGGER_LABEL[m.trigger].toLowerCase()}`}
+                    </span>
                   </button>
-                  <button type="button" className="btn btn-ghost btn-sm px-2" aria-label="Build earlier" disabled={pos === 0} onClick={() => moveOrder(pos, -1)}>↑</button>
-                  <button type="button" className="btn btn-ghost btn-sm px-2" aria-label="Build later" disabled={pos === ordered.length - 1} onClick={() => moveOrder(pos, 1)}>↓</button>
+                  <button type="button" className="flex h-7 w-7 flex-none items-center justify-center rounded-[6px] text-ink-2 hover:bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] hover:text-ink disabled:opacity-30" aria-label={`Build ${label} earlier`} title="Build earlier" disabled={pos === 0} onClick={() => moveOrder(pos, -1)}>
+                    <ArrowUp size={14} aria-hidden="true" />
+                  </button>
+                  <button type="button" className="flex h-7 w-7 flex-none items-center justify-center rounded-[6px] text-ink-2 hover:bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] hover:text-ink disabled:opacity-30" aria-label={`Build ${label} later`} title="Build later" disabled={pos === ordered.length - 1} onClick={() => moveOrder(pos, 1)}>
+                    <ArrowDown size={14} aria-hidden="true" />
+                  </button>
                 </div>
                 {open && (
-                  <div className="grid grid-cols-2 gap-2 border-t border-line p-2">
+                  <div className="space-y-2.5 border-t border-line bg-[color-mix(in_srgb,var(--ink)_2%,var(--surface))] p-2.5">
                     <Field label="Effect">
-                      <select className="field h-9 py-0 text-[13px]" value={m.preset} onChange={(e) => setMotion(i, { ...m, preset: e.target.value as Motion["preset"] }, "Change effect")}>
+                      <select className={ctl} value={m.preset} onChange={(e) => setMotion(i, { ...m, preset: e.target.value as Motion["preset"] }, "Change effect")}>
                         {MOTION_PRESETS.map((p) => (
                           <option key={p} value={p}>{PRESET_LABEL[p]}</option>
                         ))}
                       </select>
                     </Field>
                     <Field label="Start">
-                      <select className="field h-9 py-0 text-[13px]" value={m.trigger} onChange={(e) => setMotion(i, { ...m, trigger: e.target.value as Motion["trigger"] }, "Change start")}>
+                      <select className={ctl} value={m.trigger} onChange={(e) => setMotion(i, { ...m, trigger: e.target.value as Motion["trigger"] }, "Change start")}>
                         {TRIGGERS.map((t) => (
                           <option key={t} value={t}>{TRIGGER_LABEL[t]}</option>
                         ))}
                       </select>
                     </Field>
-                    <Field label="Delay (ms)">
-                      <input type="number" min={0} max={5000} step={50} className="field tabular h-9 py-0 text-[13px]" value={m.delayMs} onChange={(e) => setMotion(i, { ...m, delayMs: Math.max(0, Math.min(5000, Math.round(Number(e.target.value) || 0))) }, "Change delay")} />
-                    </Field>
-                    <Field label="Duration (ms)">
-                      <input type="number" min={80} max={3000} step={20} className="field tabular h-9 py-0 text-[13px]" value={m.durationMs} onChange={(e) => setMotion(i, { ...m, durationMs: Math.max(80, Math.min(3000, Math.round(Number(e.target.value) || 320))) }, "Change duration")} />
-                    </Field>
-                    <div className="col-span-2">
-                      <Field label="Easing">
-                        <select className="field h-9 py-0 text-[13px]" value={m.easing} onChange={(e) => setMotion(i, { ...m, easing: e.target.value as Motion["easing"] }, "Change easing")}>
-                          {EASINGS.map((x) => (
-                            <option key={x} value={x}>{EASING_LABEL[x]}</option>
-                          ))}
-                        </select>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="Delay">
+                        <span className="relative block">
+                          <input type="number" min={0} max={5000} step={50} className={`${ctl} tabular pr-9`} value={m.delayMs} onChange={(e) => setMotion(i, { ...m, delayMs: Math.max(0, Math.min(5000, Math.round(Number(e.target.value) || 0))) }, "Change delay")} />
+                          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-ink-2">ms</span>
+                        </span>
+                      </Field>
+                      <Field label="Duration">
+                        <span className="relative block">
+                          <input type="number" min={80} max={3000} step={20} className={`${ctl} tabular pr-9`} value={m.durationMs} onChange={(e) => setMotion(i, { ...m, durationMs: Math.max(80, Math.min(3000, Math.round(Number(e.target.value) || 320))) }, "Change duration")} />
+                          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-ink-2">ms</span>
+                        </span>
                       </Field>
                     </div>
+                    <Field label="Easing">
+                      <select className={ctl} value={m.easing} onChange={(e) => setMotion(i, { ...m, easing: e.target.value as Motion["easing"] }, "Change easing")}>
+                        {EASINGS.map((x) => (
+                          <option key={x} value={x}>{EASING_LABEL[x]}</option>
+                        ))}
+                      </select>
+                    </Field>
                   </div>
                 )}
               </li>
             );
           })}
         </ol>
-        <p className="mt-2 text-[12px] text-ink-2">
-          {getLayout(slide.layout).name} layout. &ldquo;On click&rdquo; starts a new build step in present mode.
+        <p className="mt-2.5 text-[12px] leading-[17px] text-ink-2">
+          {getLayout(slide.layout).name} layout. &ldquo;On click&rdquo; starts a new build step when you present.
         </p>
-      </div>
+      </section>
     </div>
   );
 }

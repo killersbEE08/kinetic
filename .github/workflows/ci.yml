@@ -44,8 +44,67 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
-  deploy:
+  # Browser tests in demo mode (create, edit, review, comment, restore, export, present, Trash)
+  # plus axe accessibility checks. Runs on every push and pull request.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # Signed-in browser tests against a running app with real keys (a staging / preview URL).
+  # Runs only when E2E_CLOUD_URL (variable) and E2E_CLERK_USER_EMAIL + Clerk keys (secrets) are set.
+  e2e-cloud:
     needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Skip when signed-in tests are not configured
+        id: gate
+        env:
+          URL: ${{ vars.E2E_CLOUD_URL }}
+          USER: ${{ secrets.E2E_CLERK_USER_EMAIL }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$USER" ]; then echo "ready=false" >> "$GITHUB_OUTPUT"; echo "E2E_CLOUD_URL or E2E_CLERK_USER_EMAIL not set; skipping."; else echo "ready=true" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.gate.outputs.ready == 'true'
+        uses: actions/checkout@v4
+      - if: steps.gate.outputs.ready == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm test:e2e:cloud
+        env:
+          E2E_CLOUD_URL: ${{ vars.E2E_CLOUD_URL }}
+          E2E_CLERK_USER_EMAIL: ${{ secrets.E2E_CLERK_USER_EMAIL }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
+
+  deploy:
+    needs: [check, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -68,6 +127,16 @@ jobs:
           cache: pnpm
       - if: steps.gate.outputs.ready == 'true'
         run: pnpm install --frozen-lockfile
+      # Database first: migrations only add tables and columns, so the running app keeps working.
+      # Needs the SUPABASE_DB_URL secret (Supabase → Connect → Session pooler URI). See README
+      # "Migrations on deploy" for the one-time step if migrations were run by hand before.
+      - name: Run database migrations
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then echo "::warning::SUPABASE_DB_URL not set: migrations skipped. Run them by hand before this deploy."; exit 0; fi
+          npx --yes supabase@2.121.0 db push --db-url "$SUPABASE_DB_URL" --include-all
       - if: steps.gate.outputs.ready == 'true'
         run: pnpm run deploy
         env:
@@ -79,3 +148,16 @@ jobs:
           NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
           NEXT_PUBLIC_RELEASE: ${{ github.sha }}
           NEXT_TELEMETRY_DISABLED: "1"
+      # Fails the run if the live app reports a missing migration or service.
+      - name: Health check
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then echo "::warning::NEXT_PUBLIC_APP_URL not set: health check skipped."; exit 0; fi
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o health.json -w '%{http_code}' "$APP_URL/api/health" || true)
+            if [ "$code" = "200" ]; then cat health.json; exit 0; fi
+            sleep 10
+          done
+          echo "::error::/api/health returned $code"; cat health.json; exit 1

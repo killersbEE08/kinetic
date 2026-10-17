@@ -8,7 +8,9 @@ import { templateDeck } from "@/lib/deck/templates";
 import { deckTheme } from "@/lib/deck/themes";
 import { offlineOutline } from "@/lib/ai/offline";
 import { SAMPLE_NOTES, SAMPLE_PROMPT } from "@/lib/deck/sample";
-import { BrowserChrome, Check, JsonCode, SectionHead } from "./Common";
+import { BrowserChrome, Check, DeckThumb, JsonCode, SectionHead } from "./Common";
+import { CATEGORY_LABEL, TEMPLATES } from "@/lib/deck/templates";
+import { Reveal, ScrollRow } from "./motion";
 
 // ---------------- 2. Proof strip ----------------
 const KINDS = [
@@ -25,13 +27,45 @@ const KINDS = [
 ] as const;
 
 export function ProofStrip() {
+  const half = Math.ceil(TEMPLATES.length / 2);
+  const rows = [TEMPLATES.slice(0, half), TEMPLATES.slice(half)];
+  return (
+    <section className="border-b border-[var(--m-line)] bg-white py-20" aria-label="Sample decks made with Kinetic">
+      <div className="m-frame">
+        <Reveal>
+          <p className="m-small text-center">Built for the decks people present every week. Hover a slide to play it.</p>
+        </Reveal>
+      </div>
+      <div className="mt-10 space-y-5">
+        {rows.map((row, r) => (
+          <ScrollRow key={r} direction={r === 0 ? 1 : -1} className="m-edge-fade">
+            {row.map((t) => (
+              <Link key={t.id} href={`/t/${t.id}`} className="group block w-[300px] flex-none sm:w-[340px]" aria-label={`Open ${t.name}`}>
+                <span className="block overflow-hidden rounded-[12px] border border-[var(--m-line)] shadow-[0_1px_2px_rgba(16,17,20,0.05)] transition-[box-shadow,transform] duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_40px_-20px_rgba(16,17,20,0.35)]">
+                  <DeckThumb templateId={t.id} slideIndex={t.highlights?.[1] ?? 0} />
+                </span>
+                <span className="mt-2 flex items-center justify-between px-1 text-[13px]">
+                  <span className="font-medium">{t.name}</span>
+                  <span className="text-[var(--m-gray)]">{CATEGORY_LABEL[t.category]}</span>
+                </span>
+              </Link>
+            ))}
+          </ScrollRow>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Kept for reference in other pages: the list of deck kinds. */
+export function DeckKinds() {
   return (
     <section className="border-b border-[var(--m-line)] bg-white py-14" aria-label="What people make with Kinetic">
       <div className="m-frame">
         <p className="m-small text-center">Built for the decks people present every week</p>
         <ul className="mx-auto mt-8 grid max-w-[920px] grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-5">
           {KINDS.map(([name, d]) => (
-            <li key={name} className="flex items-center justify-center gap-2 text-[15px] font-medium tracking-[-0.01em] text-[#9a9ea6]">
+            <li key={name} className="flex items-center justify-center gap-2 text-[15px] font-medium tracking-[-0.01em] text-[#6b6f78]">
               <svg width="16" height="16" viewBox="0 0 15 15" aria-hidden="true">
                 <path d={d} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
               </svg>

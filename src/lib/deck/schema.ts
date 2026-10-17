@@ -204,12 +204,33 @@ export const isFree = (el: Pick<Element, "slot">) => el.slot === FREE_SLOT;
 
 export const TRANSITIONS = ["cut", "fade", "push", "morph"] as const;
 
+const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
+/** A slide's own background: a colour, or a photo with an optional dark layer so text stays readable. */
+export const SlideBackground = z.object({
+  color: Hex.optional(),
+  image: z
+    .object({
+      src: z.string().regex(MEDIA_SRC_RX),
+      alt: z.string().min(1).max(250),
+      focal: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).default([0.5, 0.5]),
+      credit: z.object({ name: z.string().min(1).max(80), url: z.string().max(300).regex(/^https:\/\/unsplash\.com\//) }).optional(),
+    })
+    .optional(),
+  /** Darkening over a background photo, 0 (none) to 0.85. */
+  dim: z.number().min(0).max(0.85).optional(),
+});
+export type SlideBackground = z.infer<typeof SlideBackground>;
+
 export const Slide = z.object({
   id: Id,
   layout: z.string().min(1).max(32),
   elements: z.array(Element).max(60),
   transition: z.enum(TRANSITIONS).default("fade"),
   notes: z.string().max(5000).default(""),
+  /** Hidden slides stay in the editor but are skipped when presenting, sharing and downloading. */
+  hidden: z.boolean().optional(),
+  background: SlideBackground.optional(),
 });
 export type Slide = z.infer<typeof Slide>;
 

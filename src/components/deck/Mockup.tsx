@@ -78,7 +78,8 @@ function ScreenBody({ screen, theme, run, delay, wide }: { screen: Screen; theme
     </div>
   );
   const cta = screen.cta && (
-    <div {...enter(delay + 350 + screen.rows.length * 130 + 80, "flex items-center justify-center rounded-[16px] font-semibold", { background: accent, color: on, fontSize: 22, height: 64 })}>
+    <div {...enter(delay + 350 + screen.rows.length * 130 + 80, "flex items-center justify-center rounded-[16px] font-bold", { background: accent, color: on, fontSize: 22, height: 64 })}>
+      {/* Bold 22px counts as large text (WCAG 3:1), so white stays readable on mid-tone brand colours. */}
       {screen.cta}
     </div>
   );

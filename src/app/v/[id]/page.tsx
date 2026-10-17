@@ -4,7 +4,9 @@
 // per slide (for the owner's analytics), and offers a PDF download when the owner allowed it.
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, Maximize } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Flag, Maximize, MessageSquare, X } from "lucide-react";
+import { ReportForm } from "@/components/app/ReportForm";
+import { useBackend } from "@/lib/client/backend";
 import { SlideFrame, SlideStage } from "@/components/deck/SlideView";
 import { Wordmark } from "@/components/ui/chrome";
 import { setAssetLoader } from "@/lib/client/assets";
@@ -12,13 +14,14 @@ import { canMorph, changeSlide } from "@/lib/client/morph";
 import { Deck as DeckSchema, type Deck } from "@/lib/deck/schema";
 import { deckTheme } from "@/lib/deck/themes";
 import { stepCount } from "@/lib/deck/motion";
+import { useViewerComments, ViewerCommentsPanel } from "@/components/app/ViewerComments";
 
 type State =
   | { kind: "loading" }
   | { kind: "password"; wrong: boolean }
   | { kind: "closed"; message: string }
   | { kind: "error"; message: string }
-  | { kind: "ready"; deck: Deck; token: string | null; allowDownload: boolean };
+  | { kind: "ready"; deck: Deck; token: string | null; allowDownload: boolean; allowComments: boolean; ownerPreview: boolean };
 
 /** Sends time-per-slide beats. Uses sendBeacon so the last beat survives closing the tab. */
 function useBeats(linkId: string, token: string | null, slide: number) {
@@ -35,13 +38,14 @@ function useBeats(linkId: string, token: string | null, slide: number) {
   }, []);
 
   const flush = useCallback(
-    (beacon = false) => {
+    (beacon = false, final = false) => {
       stamp();
-      if (!token || !acc.current.size) return;
+      if (!token) return;
       const beats = [...acc.current.entries()].filter(([, ms]) => ms >= 250).map(([s, ms]) => ({ slide: s, ms: Math.round(ms) }));
       acc.current.clear();
-      if (!beats.length) return;
-      const body = JSON.stringify({ token, beats: beats.slice(0, 30) });
+      if (!beats.length && !final) return;
+      // `final` tells the server the visit ended, so the owner gets one summary alert.
+      const body = JSON.stringify({ token, beats: beats.slice(0, 30), ...(final ? { final: true } : {}) });
       if (beacon && navigator.sendBeacon) navigator.sendBeacon(`/api/v/${linkId}/beat`, new Blob([body], { type: "application/json" }));
       else void fetch(`/api/v/${linkId}/beat`, { method: "POST", body, headers: { "Content-Type": "application/json" }, keepalive: true }).catch(() => undefined);
     },
@@ -58,19 +62,19 @@ function useBeats(linkId: string, token: string | null, slide: number) {
     since.current = document.visibilityState === "visible" ? Date.now() : null;
     const t = setInterval(() => flush(), 10_000);
     const onVis = () => (document.visibilityState === "hidden" ? flush(true) : stamp());
-    const onHide = () => flush(true);
+    const onHide = () => flush(true, true);
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("pagehide", onHide);
     return () => {
       clearInterval(t);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pagehide", onHide);
-      flush(true);
+      flush(true, true);
     };
   }, [token, flush, stamp]);
 }
 
-function Player({ linkId, deck, token, allowDownload }: { linkId: string; deck: Deck; token: string | null; allowDownload: boolean }) {
+function Player({ linkId, deck, token, allowDownload, allowComments, ownerPreview }: { linkId: string; deck: Deck; token: string | null; allowDownload: boolean; allowComments: boolean; ownerPreview: boolean }) {
   const [index, setIndex] = useState(0);
   const [step, setStep] = useState(0);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -80,6 +84,10 @@ function Player({ linkId, deck, token, allowDownload }: { linkId: string; deck: 
   const slide = deck.slides[index];
   const steps = stepCount(slide, deck.motionIntensity);
   useBeats(linkId, token, index);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const comments = useViewerComments(linkId, token, allowComments);
+  const slideComments = comments.comments.filter((c) => !c.parentId && c.slideId === slide.id).length;
 
   const go = useCallback(
     (to: number) => {
@@ -97,6 +105,8 @@ function Player({ linkId, deck, token, allowDownload }: { linkId: string; deck: 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Typing a comment must not change slides.
+      if (e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
       if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) {
         e.preventDefault();
         next();
@@ -128,7 +138,14 @@ function Player({ linkId, deck, token, allowDownload }: { linkId: string; deck: 
       <header className="flex h-12 shrink-0 items-center gap-3 px-4 text-[13px]">
         <span className="min-w-0 truncate font-medium">{deck.title}</span>
         <span className="tabular text-white/60">{index + 1} / {total}</span>
+        {ownerPreview && <span className="hidden rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-white/80 sm:inline" title="You are signed in as the owner: this visit isn't counted and sends no alert.">Your link · views not counted</span>}
         <span className="ml-auto flex items-center gap-1">
+          {allowComments && (
+            <button type="button" className={`inline-flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 hover:bg-white/10 hover:text-white ${commentsOpen ? "bg-white/10 text-white" : "text-white/80"}`} onClick={() => setCommentsOpen((o) => !o)} aria-expanded={commentsOpen}>
+              <MessageSquare size={15} aria-hidden="true" />
+              Comment{slideComments ? ` (${slideComments})` : ""}
+            </button>
+          )}
           {allowDownload && (
             <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-white/80 hover:bg-white/10 hover:text-white" onClick={downloadPdf} disabled={!!downloading}>
               <Download size={15} aria-hidden="true" />
@@ -140,6 +157,7 @@ function Player({ linkId, deck, token, allowDownload }: { linkId: string; deck: 
           </button>
         </span>
       </header>
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
       <main
         className="relative flex flex-1 items-center justify-center px-2 sm:px-6"
         onClick={(e) => {
@@ -157,6 +175,17 @@ function Player({ linkId, deck, token, allowDownload }: { linkId: string; deck: 
           </div>
         </div>
       </main>
+      {allowComments && commentsOpen && !reportOpen && <ViewerCommentsPanel linkId={linkId} slideId={slide.id} slideNumber={index + 1} api={comments} ownerPreview={ownerPreview} onClose={() => setCommentsOpen(false)} />}
+      {reportOpen && (
+        <aside className="w-full overflow-y-auto border-t border-white/10 bg-[#141416] px-4 pb-4 text-white sm:w-[340px] sm:border-l sm:border-t-0" aria-label="Report this deck">
+          <div className="flex h-12 items-center justify-between">
+            <h2 className="text-[14px] font-semibold">Report this deck</h2>
+            <button type="button" className="rounded-[8px] p-1.5 text-white/70 hover:bg-white/10 hover:text-white" onClick={() => setReportOpen(false)} aria-label="Close report"><X size={16} aria-hidden="true" /></button>
+          </div>
+          <ReportForm dark link={linkId} onDone={() => setReportOpen(false)} />
+        </aside>
+      )}
+      </div>
       <footer className="flex h-14 shrink-0 items-center gap-3 px-4">
         <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10 disabled:opacity-30" onClick={prev} disabled={index === 0 && step === 0} aria-label="Previous">
           <ChevronLeft size={20} aria-hidden="true" />
@@ -167,7 +196,13 @@ function Player({ linkId, deck, token, allowDownload }: { linkId: string; deck: 
         <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10 disabled:opacity-30" onClick={next} disabled={index === total - 1 && step === steps - 1} aria-label="Next">
           <ChevronRight size={20} aria-hidden="true" />
         </button>
-        <Link href="/" className="ml-2 hidden text-[12px] text-white/50 hover:text-white/80 sm:inline">Made with Kinetic</Link>
+        {!ownerPreview && (
+          <button type="button" className="ml-2 inline-flex items-center gap-1 text-[12px] text-white/60 hover:text-white" onClick={() => (setReportOpen(true), setCommentsOpen(false))}>
+            <Flag size={12} aria-hidden="true" />
+            Report
+          </button>
+        )}
+        <Link href="/" className="ml-2 hidden text-[12px] text-white/60 hover:text-white/80 sm:inline">Made with Kinetic</Link>
       </footer>
     </div>
   );
@@ -178,13 +213,16 @@ export default function SharedDeckPage({ params }: { params: Promise<{ id: strin
   const [state, setState] = useState<State>({ kind: "loading" });
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const backend = useBackend();
 
   const open = useCallback(
     async (pw?: string) => {
       setBusy(true);
       try {
-        const res = await fetch(`/api/v/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pw ? { password: pw } : {}) });
-        const data = (await res.json().catch(() => ({}))) as { deck?: unknown; token?: string | null; allowDownload?: boolean; error?: string; code?: string };
+        // Signed in? Send the session so the owner's own visits aren't counted or alerted.
+        const auth = await backend.authToken().catch(() => null);
+        const res = await fetch(`/api/v/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json", ...(auth ? { Authorization: `Bearer ${auth}` } : {}) }, body: JSON.stringify(pw ? { password: pw } : {}) });
+        const data = (await res.json().catch(() => ({}))) as { deck?: unknown; token?: string | null; allowDownload?: boolean; allowComments?: boolean; ownerPreview?: boolean; error?: string; code?: string };
         if (res.status === 401) return setState({ kind: "password", wrong: false });
         if (res.status === 403 && data.code === "password_wrong") return setState({ kind: "password", wrong: true });
         if (res.status === 404 || res.status === 410) return setState({ kind: "closed", message: data.error ?? "This link isn't available." });
@@ -198,21 +236,25 @@ export default function SharedDeckPage({ params }: { params: Promise<{ id: strin
           if (!r.ok) throw new Error("missing");
           return r.blob();
         }, { lock: true });
-        setState({ kind: "ready", deck: parsed.data, token, allowDownload: !!data.allowDownload });
+        setState({ kind: "ready", deck: parsed.data, token, allowDownload: !!data.allowDownload, allowComments: !!data.allowComments && !!token, ownerPreview: !!data.ownerPreview });
       } catch {
         setState({ kind: "error", message: "Check your connection and try again." });
       } finally {
         setBusy(false);
       }
     },
-    [id],
+    [id, backend],
   );
 
+  // Once sign-in has loaded (so the owner can be recognised), open the link exactly once.
+  const opened = useRef(false);
   useEffect(() => {
-    void open(); // eslint-disable-line react-hooks/set-state-in-effect -- loads the deck once on arrival
-  }, [open]);
+    if (!backend.ready || opened.current) return;
+    opened.current = true;
+    void open();
+  }, [open, backend.ready]);
 
-  if (state.kind === "ready") return <Player linkId={id} deck={state.deck} token={state.token} allowDownload={state.allowDownload} />;
+  if (state.kind === "ready") return <Player linkId={id} deck={state.deck} token={state.token} allowDownload={state.allowDownload} allowComments={state.allowComments} ownerPreview={state.ownerPreview} />;
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8 px-6">

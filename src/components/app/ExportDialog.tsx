@@ -3,7 +3,9 @@
 // Download dialog: PowerPoint (editable, animated), PDF (slides or handout), or one slide as PNG.
 import { useEffect, useRef, useState } from "react";
 import type { Deck } from "@/lib/deck/schema";
+import { hiddenCount, presentable } from "@/lib/deck/slides";
 import { Segmented } from "@/components/ui/chrome";
+import { track } from "@/lib/client/track";
 
 type Format = "pptx" | "pdf" | "png";
 
@@ -18,6 +20,9 @@ export function ExportDialog({ deck, slideIndex, open, onClose }: { deck: Deck; 
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [withHidden, setWithHidden] = useState(false);
+  const hidden = hiddenCount(deck);
+  const out = withHidden ? deck : presentable(deck);
 
   useEffect(() => {
     const d = ref.current;
@@ -31,17 +36,18 @@ export function ExportDialog({ deck, slideIndex, open, onClose }: { deck: Deck; 
     setDone(null);
     setProgress("Preparing");
     const tick = (n: number, total: number) => setProgress(`Drawing slide ${n} of ${total}`);
+    const t0 = performance.now();
     try {
       const { download, fileBase } = await import("@/lib/export/render");
       const base = fileBase(deck.title);
       if (format === "pptx") {
         const { exportPptx } = await import("@/lib/export/pptx");
-        const blob = await exportPptx(deck, { fonts, animations, notes }, tick);
+        const blob = await exportPptx(out, { fonts, animations, notes }, tick);
         download(blob, `${base}.pptx`);
         setDone(`${base}.pptx downloaded.`);
       } else if (format === "pdf") {
         const { exportPdf } = await import("@/lib/export/pdf");
-        const blob = await exportPdf(deck, { layout, quality }, tick);
+        const blob = await exportPdf(out, { layout, quality }, tick);
         download(blob, `${base}${layout === "handout" ? " (handout)" : ""}.pdf`);
         setDone("PDF downloaded.");
       } else {
@@ -50,8 +56,13 @@ export function ExportDialog({ deck, slideIndex, open, onClose }: { deck: Deck; 
         download(blob, `${base} - slide ${slideIndex + 1}.png`);
         setDone(`Slide ${slideIndex + 1} downloaded.`);
       }
+      const ms = Math.round(performance.now() - t0);
+      const slides = format === "png" ? 1 : out.slides.length;
+      track("deck_downloaded", { deckId: deck.id, props: { format, slides } });
+      track("timing", { deckId: deck.id, props: { what: `export_${format}`, ms, slides, ok: true } });
     } catch (e) {
       console.error("[export]", e);
+      track("timing", { deckId: deck.id, props: { what: `export_${format}`, ms: Math.round(performance.now() - t0), ok: false } });
       setError("The download couldn't be made. Try again, or try the other format.");
     } finally {
       setProgress(null);
@@ -64,7 +75,7 @@ export function ExportDialog({ deck, slideIndex, open, onClose }: { deck: Deck; 
     <dialog ref={ref} onClose={onClose} onCancel={(e) => busy && e.preventDefault()} className="m-auto w-[min(520px,calc(100vw-32px))] rounded-[20px] border border-line bg-surface p-0 text-ink backdrop:bg-black/40" aria-labelledby="export-title">
       <div className="border-b border-line px-6 py-4">
         <h2 id="export-title" className="text-[17px] font-semibold">Download</h2>
-        <p className="mt-0.5 text-[13px] text-ink-2">{deck.slides.length} slides. Files are made in your browser.</p>
+        <p className="mt-0.5 text-[13px] text-ink-2">{format === "png" ? "1 slide" : `${out.slides.length} slides`}{hidden && !withHidden && format !== "png" ? ` (${hidden} hidden left out)` : ""}. Files are made in your browser.</p>
       </div>
       <div className="space-y-5 px-6 py-5">
         <div role="radiogroup" aria-label="Format" className="grid grid-cols-3 gap-2">
@@ -118,6 +129,16 @@ export function ExportDialog({ deck, slideIndex, open, onClose }: { deck: Deck; 
             </div>
             <p className="text-[12px] text-ink-2">PDFs show every slide in its final state. Animations need the PowerPoint file or present mode.</p>
           </div>
+        )}
+
+        {hidden > 0 && format !== "png" && (
+          <label className="flex items-start gap-3 text-[14px]">
+            <input type="checkbox" className="mt-1 h-4 w-4" checked={withHidden} onChange={(e) => setWithHidden(e.target.checked)} />
+            <span>
+              Include {hidden} hidden slide{hidden === 1 ? "" : "s"}
+              <span className="block text-[12px] text-ink-2">Hidden slides are left out unless you tick this.</span>
+            </span>
+          </label>
         )}
 
         <div aria-live="polite" className="min-h-[20px] text-[13px]">

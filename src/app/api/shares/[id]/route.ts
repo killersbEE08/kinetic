@@ -15,6 +15,8 @@ const Patch = z.object({
   name: z.string().trim().max(80).optional(),
   password: z.string().min(4).max(100).nullable().optional(), // null removes it
   allowDownload: z.boolean().optional(),
+  allowComments: z.boolean().optional(),
+  notify: z.boolean().optional(),
   expiresAt: z.string().datetime().nullable().optional(),
   revoked: z.boolean().optional(),
   /** Replace the snapshot with the deck as it is now. */
@@ -34,6 +36,8 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   const update: Record<string, unknown> = {};
   if (b.name !== undefined) update.name = b.name;
   if (b.allowDownload !== undefined) update.allow_download = b.allowDownload;
+  if (b.allowComments !== undefined) update.allow_comments = b.allowComments;
+  if (b.notify !== undefined) update.notify = b.notify;
   if (b.expiresAt !== undefined) update.expires_at = b.expiresAt;
   if (b.revoked !== undefined) update.revoked_at = b.revoked ? new Date().toISOString() : null;
   if (b.password !== undefined) update.password_hash = b.password ? await hashPassword(b.password) : null;

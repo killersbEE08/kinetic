@@ -92,10 +92,17 @@ function Dropdown({ menu }: { menu: Menu }) {
 export function Nav() {
   const backend = useBackend();
   const [mobile, setMobile] = useState(false);
+  const [floating, setFloating] = useState(false);
   const signedIn = backend.mode === "demo" || backend.signedIn;
+  useEffect(() => {
+    const on = () => setFloating(window.scrollY > 48);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, []);
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--m-line)] bg-white/95">
-      <div className="m-frame flex h-16 items-center justify-between gap-6">
+    <header className={`m-nav sticky top-0 z-30 ${floating ? "m-nav-float" : ""}`}>
+      <div className="m-nav-bar m-frame flex h-16 items-center justify-between gap-6">
         <Link href="/" className="flex items-center gap-2 text-[18px] font-medium tracking-[-0.02em]" aria-label="Kinetic home">
           <Mark />
           Kinetic

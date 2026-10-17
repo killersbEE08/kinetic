@@ -1,7 +1,9 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "./env";
 import { HttpError } from "./auth-error";
 import type { Deck } from "@/lib/deck/schema";
+import { presentable } from "@/lib/deck/slides";
 
 // Share links: ids, passwords, and signed viewer sessions. Web Crypto only (runs on Workers).
 
@@ -37,18 +39,31 @@ function safeEqual(a: string, b: string): boolean {
   return d === 0;
 }
 
-/** Token a viewer sends back with time beats and photo requests: proves it opened this link. */
+/**
+ * Token a viewer sends back with time beats, photo requests and comments: proves it opened this
+ * link. Session 0 is the owner previewing their own link (nothing is recorded for it).
+ */
 export async function sessionToken(linkId: string, sessionId: number): Promise<string> {
   return `${sessionId}.${await hmac(`view:${linkId}:${sessionId}`)}`;
 }
 
+/** The session id (0 for an owner preview), or null when the token isn't valid for this link. */
 export async function verifySessionToken(linkId: string, token: string | null | undefined): Promise<number | null> {
   if (!token || token.length > 200) return null;
   const [sid, sig] = token.split(".");
   const id = Number(sid);
-  if (!Number.isInteger(id) || id <= 0 || !sig) return null;
+  if (!Number.isInteger(id) || id < 0 || !sig) return null;
   return safeEqual(sig, await hmac(`view:${linkId}:${id}`)) ? id : null;
 }
+
+/** True when the Kinetic team took this link down. Fails open if the table doesn't exist yet. */
+export async function linkBlocked(db: SupabaseClient, linkId: string): Promise<boolean> {
+  const { data, error } = await db.from("blocked_links").select("link_id").eq("link_id", linkId).maybeSingle();
+  if (error) return false;
+  return !!data;
+}
+
+export const BLOCKED_MESSAGE = "This link was removed because it broke Kinetic's rules.";
 
 /** PBKDF2-SHA256, 100k iterations: "pbkdf2$<iter>$<salt>$<hash>". */
 export async function hashPassword(pw: string): Promise<string> {
@@ -88,6 +103,8 @@ export interface LinkRow {
   snapshot_version: number;
   password_hash: string | null;
   allow_download: boolean;
+  allow_comments?: boolean;
+  notify?: boolean;
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;
@@ -104,7 +121,7 @@ export function snapshotAssetIds(snapshot: unknown): Set<string> {
   return out;
 }
 
-export const LINK_COLS = "id, deck_id, name, snapshot_version, password_hash, allow_download, expires_at, revoked_at, created_at, updated_at";
+export const LINK_COLS = "id, deck_id, name, snapshot_version, password_hash, allow_download, allow_comments, notify, expires_at, revoked_at, created_at, updated_at";
 
 /** What the owner sees about a link (never the password hash itself). */
 export function publicLink(l: Omit<LinkRow, "snapshot" | "owner_id">, stats?: { views: number; viewers: number; totalMs: number; lastViewedAt: string | null }) {
@@ -115,6 +132,8 @@ export function publicLink(l: Omit<LinkRow, "snapshot" | "owner_id">, stats?: { 
     snapshotVersion: l.snapshot_version,
     hasPassword: !!l.password_hash,
     allowDownload: l.allow_download,
+    allowComments: !!l.allow_comments,
+    notify: l.notify ?? true,
     expiresAt: l.expires_at,
     revoked: !!l.revoked_at,
     live: linkLive(l),
@@ -124,9 +143,17 @@ export function publicLink(l: Omit<LinkRow, "snapshot" | "owner_id">, stats?: { 
   };
 }
 
-/** The deck as viewers get it: without the user's original notes. */
+/** The deck as viewers get it: without the user's original notes, and without hidden slides. */
 export function snapshotOf(doc: Deck): Deck {
-  const { source: _source, ...rest } = doc; // eslint-disable-line @typescript-eslint/no-unused-vars -- dropped on purpose
+  const { source: _source, ...rest } = presentable(doc); // eslint-disable-line @typescript-eslint/no-unused-vars -- dropped on purpose
   return rest as Deck;
 }
 
+
+
+/** The joined deck row comes back as an object or a one-item array depending on the relation. */
+export function deckDeleted(row: unknown): boolean {
+  const d = (row as { decks?: { deleted_at: string | null } | { deleted_at: string | null }[] } | null)?.decks;
+  const one = Array.isArray(d) ? d[0] : d;
+  return !!one?.deleted_at;
+}

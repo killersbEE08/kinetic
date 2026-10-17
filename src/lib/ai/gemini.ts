@@ -24,6 +24,8 @@ export interface JsonCallOptions<T> {
   schema: z.ZodType<T>;
   maxOutputTokens?: number;
   timeoutMs?: number;
+  /** Model to call (defaults to GEMINI_MODEL). Free users may get a cheaper one. */
+  model?: string;
 }
 
 async function callOnce(model: string, body: unknown, timeoutMs: number): Promise<string> {
@@ -50,7 +52,7 @@ async function callOnce(model: string, body: unknown, timeoutMs: number): Promis
  * repair attempt that includes the error (docs/04 §5.2), then gives up.
  */
 export async function geminiJson<T>(opts: JsonCallOptions<T>): Promise<T> {
-  const model = config.geminiModel();
+  const model = opts.model || config.geminiModel();
   const generationConfig = {
     responseMimeType: "application/json",
     responseJsonSchema: looseSchema(opts.jsonSchema),

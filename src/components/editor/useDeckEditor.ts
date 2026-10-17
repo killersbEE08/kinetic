@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Deck } from "@/lib/deck/schema";
 import { applyDeckPatch, PatchError, type PatchOp } from "@/lib/deck/patch";
 import { ApiError, useBackend } from "@/lib/client/backend";
+import { track } from "@/lib/client/track";
 
 interface HistoryEntry {
   ops: PatchOp[];
@@ -43,6 +44,7 @@ export function useDeckEditor(id: string) {
   const queue = useRef<Promise<void>>(Promise.resolve());
   const pending = useRef(0);
   const blocked = useRef(false);
+  const saves = useRef(0);
 
   const apply = useCallback(
     (d: Deck) => {
@@ -86,10 +88,16 @@ export function useDeckEditor(id: string) {
       setSaveState("saving");
       queue.current = queue.current.then(async () => {
         if (blocked.current) return;
+        const t0 = performance.now();
         try {
           serverVersion.current = await backend.patchDeck(id, serverVersion.current, ops, author);
           if (deckRef.current) deckRef.current = { ...deckRef.current, version: serverVersion.current };
+          // Save timing: every slow save, plus one in 20 for a baseline.
+          const ms = Math.round(performance.now() - t0);
+          saves.current += 1;
+          if (ms > 1500 || saves.current % 20 === 1) track("timing", { deckId: id, props: { what: "save", ms, ops: ops.length, ok: true } });
         } catch (e) {
+          track("timing", { deckId: id, props: { what: "save", ms: Math.round(performance.now() - t0), ok: false, status: e instanceof ApiError ? e.status : 0 } });
           blocked.current = true;
           if (e instanceof ApiError && e.status === 409) {
             setSaveState("conflict");
@@ -110,7 +118,7 @@ export function useDeckEditor(id: string) {
 
   /** Applies ops locally and queues them for saving. Returns false if the ops were invalid. */
   const commit = useCallback(
-    (ops: PatchOp[], opts: { label: string; author?: "user" | "ai"; history?: "push" | "undo" | "redo" } = { label: "Edit" }): boolean => {
+    (ops: PatchOp[], opts: { label: string; author?: "user" | "ai"; history?: "push" | "undo" | "redo" | "none" } = { label: "Edit" }): boolean => {
       const current = deckRef.current;
       if (!current || !ops.length) return false;
       let result;
@@ -124,7 +132,9 @@ export function useDeckEditor(id: string) {
       deckRef.current = next;
       setDeck(next);
       const entry = { ops, inverse: result.inverse, label: opts.label };
-      if (opts.history === "undo") setRedo([...redoRef.current, { ...entry, ops: result.inverse, inverse: ops }]);
+      if (opts.history === "none") {
+        // Background changes (slides arriving from generation) aren't undo steps.
+      } else if (opts.history === "undo") setRedo([...redoRef.current, { ...entry, ops: result.inverse, inverse: ops }]);
       else if (opts.history === "redo") setUndo([...undoRef.current, { ...entry, ops: result.inverse, inverse: ops }]);
       else {
         setUndo([...undoRef.current.slice(-199), entry]);
@@ -159,8 +169,12 @@ export function useDeckEditor(id: string) {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
+  const current = useCallback(() => deckRef.current, []);
+
   return {
     deck,
+    /** The latest deck, including changes not rendered yet (for background updates). */
+    current,
     loadError,
     reload: load,
     saveState,

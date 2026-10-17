@@ -2,6 +2,8 @@ import { z } from "zod";
 import { Deck, Id } from "@/lib/deck/schema";
 import { applyDeckPatch, PatchError, type PatchOp } from "@/lib/deck/patch";
 import { dbError, handle, HttpError, json, readJson, requireUser } from "@/lib/server/auth";
+import { snapshotBefore } from "@/lib/deck/versions";
+import { takeSnapshot } from "@/lib/server/versions";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -55,6 +57,10 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   const version = data.version + 1;
   next = { ...next, version };
 
+  // Keep a restorable copy of the deck as it was before AI edits, and every 25 saves.
+  const kind = snapshotBefore(data.version, body.data.author);
+  if (kind) await takeSnapshot(user, id, { ...(data.doc as Deck), version: data.version }, kind);
+
   // Conditional update: only succeeds if nobody else committed in between.
   const { data: updated, error: upErr } = await user.db
     .from("decks")
@@ -69,11 +75,17 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   return json({ version });
 });
 
-// DELETE /api/decks/:id — soft delete.
+// DELETE /api/decks/:id — moves the deck to Trash. ?permanent=1 deletes a deck that is already in Trash.
 export const DELETE = handle(async (req: Request, ctx: Ctx) => {
   const user = await requireUser(req, "write");
   const id = await deckId(ctx);
-  const { error } = await user.db.from("decks").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+  if (new URL(req.url).searchParams.get("permanent") === "1") {
+    const { data, error } = await user.db.from("decks").delete().eq("id", id).not("deleted_at", "is", null).select("id");
+    if (error) dbError(error, "Could not delete the deck.");
+    if (!data?.length) throw new HttpError(404, "That deck isn't in Trash.", "not_found");
+    return json({ ok: true });
+  }
+  const { error } = await user.db.from("decks").update({ deleted_at: new Date().toISOString() }).eq("id", id).is("deleted_at", null);
   if (error) dbError(error, "Could not delete the deck.");
   return json({ ok: true });
 });

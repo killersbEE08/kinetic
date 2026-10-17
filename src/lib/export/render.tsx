@@ -14,7 +14,7 @@ export const STAGE_W = 1920;
 export const STAGE_H = 1080;
 
 export function deckAssetIds(deck: Deck): string[] {
-  const ids = deck.slides.flatMap((s) => s.elements.flatMap((e) => (e.type === "image" ? [assetIdOf(e.src)].filter((x): x is string => !!x) : [])));
+  const ids = deck.slides.flatMap((s) => [...s.elements.flatMap((e) => (e.type === "image" ? [e.src] : [])), ...(s.background?.image ? [s.background.image.src] : [])].map(assetIdOf).filter((x): x is string => !!x));
   const logo = deck.brand?.logo ? assetIdOf(deck.brand.logo) : null;
   return logo ? [...ids, logo] : ids;
 }

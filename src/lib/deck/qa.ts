@@ -16,7 +16,7 @@ export const LIMITS = { bodyWords: 40, bullets: 6, bulletWords: 12 } as const;
 
 export const wordCount = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 
-function bodyWords(slide: Slide): number {
+export function bodyWords(slide: Slide): number {
   let n = 0;
   for (const el of slide.elements) {
     if (el.type === "text" && (el.role === "body" || el.role === "caption" || el.role === "quote")) n += wordCount(el.content);

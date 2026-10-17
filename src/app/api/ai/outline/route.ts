@@ -2,6 +2,7 @@ import { z } from "zod";
 import { GenerationInput } from "@/lib/deck/schema";
 import { handle, HttpError, json, readJson, requireUser, ensureProfile } from "@/lib/server/auth";
 import { makeOutline } from "@/lib/ai/server";
+import { recordEvent } from "@/lib/server/events";
 
 const Body = z.object({ input: GenerationInput });
 
@@ -12,6 +13,8 @@ export const POST = handle(async (req: Request) => {
   const body = Body.safeParse(await readJson(req, 1_000_000));
   if (!body.success) throw new HttpError(400, "Check the deck settings and try again.", "invalid_input");
   if (!body.data.input.prompt.trim() && !body.data.input.notes.trim()) throw new HttpError(400, "Describe the deck or paste your notes first.", "empty_input");
+  const t0 = Date.now();
   const { outline, engine } = await makeOutline(user, body.data.input);
+  await recordEvent(user, "outline_created", undefined, { engine, slides: outline.slides.length, ms: Date.now() - t0, deckType: body.data.input.deckType });
   return json({ outline, engine });
 });

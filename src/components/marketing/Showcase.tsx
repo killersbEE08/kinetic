@@ -1,5 +1,8 @@
 "use client";
 
+import { AnimatePresence, motion, useReducedMotion as useMotionReduced } from "motion/react";
+import { TiltCard } from "./motion";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { SlideView } from "@/components/deck/SlideView";
@@ -34,6 +37,7 @@ export function UseCases() {
         <ul className="mt-14 grid gap-5 md:grid-cols-2">
           {USES.map((u) => (
             <li key={u.t}>
+              <TiltCard className="h-full" max={3}>
               <Link href={`/t/${u.id}`} className="m-card group grid h-full gap-5 p-5 transition-shadow hover:shadow-[0_12px_32px_-12px_rgba(16,17,20,0.18)] sm:grid-cols-[1fr_1.15fr] sm:items-center">
                 <div>
                   <h3 className="text-[20px] font-medium tracking-[-0.015em]">{u.t}</h3>
@@ -44,6 +48,7 @@ export function UseCases() {
                 </div>
                 <DeckThumb templateId={u.id} slides={[u.s]} auto className="rounded-[10px] border border-[var(--m-line)]" />
               </Link>
+              </TiltCard>
             </li>
           ))}
         </ul>
@@ -72,7 +77,7 @@ export function ThreeSteps() {
         <ol>
           {steps.map(([t, d], i) => (
             <li key={t} className={`grid grid-cols-[88px_1fr] gap-6 py-8 ${i > 0 ? "border-t border-[var(--m-line)]" : ""}`}>
-              <span className="tabular text-[64px] font-light leading-none tracking-[-0.05em] text-[#d5d8de]" aria-hidden="true">
+              <span className="tabular text-[64px] font-light leading-none tracking-[-0.05em] text-[#868a92]" aria-hidden="true">
                 0{i + 1}
               </span>
               <div>
@@ -205,6 +210,7 @@ export function Gallery({ heading = true, initial = "all" }: { heading?: boolean
   const [filter, setFilter] = useState<TemplateCategory | "all">(initial);
   const list = useMemo(() => TEMPLATES.filter((t) => filter === "all" || t.category === filter), [filter]);
   const [featured, ...rest] = list;
+  const reduce = useMotionReduced();
   return (
     <section id="gallery" className="scroll-mt-20 bg-white py-24">
       <div className="m-frame">
@@ -242,8 +248,10 @@ export function Gallery({ heading = true, initial = "all" }: { heading?: boolean
                 </div>
               </Link>
             </li>
+            <AnimatePresence mode="popLayout" initial={false}>
             {rest.map((t) => (
-              <li key={t.id}>
+              <motion.li key={t.id} layout={!reduce} initial={reduce ? false : { opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={reduce ? undefined : { opacity: 0, scale: 0.96 }} transition={{ duration: 0.4, ease: [0.2, 0, 0, 1] }}>
+                <TiltCard className="h-full" max={4}>
                 <Link href={`/t/${t.id}`} className="m-card group flex h-full flex-col overflow-hidden transition-shadow hover:shadow-[0_12px_32px_-12px_rgba(16,17,20,0.18)]">
                   <DeckThumb templateId={t.id} auto className="border-b border-[var(--m-line)]" />
                   <div className="p-4">
@@ -254,8 +262,10 @@ export function Gallery({ heading = true, initial = "all" }: { heading?: boolean
                     <p className="m-small mt-1 line-clamp-2">{t.summary}</p>
                   </div>
                 </Link>
-              </li>
+                </TiltCard>
+              </motion.li>
             ))}
+            </AnimatePresence>
             {/* Fill the last row on the 3-column grid with a "make your own" card. */}
             {(() => {
               const gap = (3 - ((4 + rest.length) % 3)) % 3;

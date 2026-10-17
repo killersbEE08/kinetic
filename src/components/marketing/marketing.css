@@ -9,7 +9,7 @@
 @layer components {
 .m-root {
   --m-ink: #101114;
-  --m-gray: #70747d;
+  --m-gray: #5f636b;
   --m-line: #e7e9ed;
   --m-soft: #f6f7f9;
   --m-blue: #2563d9;
@@ -291,6 +291,62 @@
 .m-fade {
   animation: m-fade 320ms cubic-bezier(0.2, 0, 0, 1) both;
 }
+
+/* ---------- Motion pieces (landing page) ---------- */
+
+/* Nav: a full-width bar at the top that turns into a floating pill once you scroll. */
+.m-nav {
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--m-line);
+  transition: background-color 360ms cubic-bezier(0.2, 0, 0, 1), border-color 360ms, padding 360ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m-nav-bar {
+  transition: max-width 480ms cubic-bezier(0.2, 0, 0, 1), background-color 360ms, box-shadow 360ms, border-radius 480ms cubic-bezier(0.2, 0, 0, 1), height 360ms;
+}
+.m-nav-float {
+  background: transparent;
+  border-color: transparent;
+  padding-top: 10px;
+}
+.m-nav-float .m-nav-bar {
+  max-width: 1000px;
+  height: 56px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 10px 30px -12px rgba(16, 17, 20, 0.22), 0 0 0 1px rgba(16, 17, 20, 0.06);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+}
+
+/* The hero product window: a soft lift and a hairline. */
+.m-window {
+  box-shadow: 0 0 0 1px rgba(16, 17, 20, 0.08), 0 50px 100px -40px rgba(23, 59, 140, 0.55), 0 20px 40px -24px rgba(16, 17, 20, 0.3);
+}
+
+/* Primary button: a light sweep crosses it on hover (interaction only). */
+.m-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.m-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.28) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 700ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m-shine:hover::after {
+  transform: translateX(120%);
+}
+
+/* Fades the ends of the sideways deck rows. */
+.m-edge-fade {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
 @keyframes m-fade {
   from {
     opacity: 0;
@@ -306,7 +362,10 @@
   .m-acc-body,
   .m-plus::before,
   .m-plus::after,
-  .m-fade {
+  .m-fade,
+  .m-nav,
+  .m-nav-bar,
+  .m-shine::after {
     transition: none;
     animation: none;
   }

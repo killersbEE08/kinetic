@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Id, type Deck } from "@/lib/deck/schema";
 import { dbError, ensureProfile, handle, HttpError, json, readJson, requireUser } from "@/lib/server/auth";
 import { hashPassword, newShareId, publicLink, snapshotOf, LINK_COLS as COLS, type LinkRow } from "@/lib/server/share";
+import { recordEvent } from "@/lib/server/events";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -34,6 +35,8 @@ const Create = z.object({
   name: z.string().trim().max(80).default(""),
   password: z.string().min(4).max(100).optional(),
   allowDownload: z.boolean().default(false),
+  allowComments: z.boolean().default(false),
+  notify: z.boolean().default(true),
   expiresAt: z.string().datetime().optional(),
 });
 
@@ -57,9 +60,12 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     snapshot_version: deck.version,
     password_hash: body.data.password ? await hashPassword(body.data.password) : null,
     allow_download: body.data.allowDownload,
+    allow_comments: body.data.allowComments,
+    notify: body.data.notify,
     expires_at: body.data.expiresAt ?? null,
   };
   const { data, error: insErr } = await user.db.from("share_links").insert(row).select(COLS).single();
   if (insErr) dbError(insErr, "Could not create the link.");
+  await recordEvent(user, "deck_shared", id, { password: !!row.password_hash, comments: row.allow_comments, expires: !!row.expires_at });
   return json({ link: publicLink(data as Omit<LinkRow, "snapshot" | "owner_id">) }, 201);
 });

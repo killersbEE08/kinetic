@@ -12,6 +12,8 @@ minimumReleaseAgeExclude:
   - miniflare@5.20261012.0-beta
   - wrangler@4.151.0
   - lucide-react@1.57.0
+  - '@clerk/backend@3.25.0'
+  - '@clerk/testing@2.2.47'
 # Flat node_modules (no symlinks). Needed for `opennextjs-cloudflare build` on Windows
 # without Developer Mode, because it copies traced files and can't create symlinks there.
 nodeLinker: hoisted

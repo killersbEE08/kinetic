@@ -1,13 +1,15 @@
 import "@/components/marketing/marketing.css";
 import { AnnouncementBar, Nav } from "@/components/marketing/Nav";
 import { Hero } from "@/components/marketing/Hero";
-import { Overview, ProofStrip, TwoWays } from "@/components/marketing/Overview";
+import { ProofStrip } from "@/components/marketing/Overview";
+import { StoryScroll } from "@/components/marketing/Story";
 import { Checks, EditDemo } from "@/components/marketing/EditDemo";
-import { Gallery, Platform, ThreeSteps, UseCases } from "@/components/marketing/Showcase";
+import { Gallery, Platform, UseCases } from "@/components/marketing/Showcase";
 import { ClosingCta, Faq, Footer, Stories } from "@/components/marketing/Stories";
 
-// Landing page. Section order follows the design brief: quiet editorial space, then
-// functional demos, proof, denser information, a dark contrast section and a bright CTA.
+// Landing page. The hero shows the product playing; the deck rows slide with the scroll; one
+// pinned section turns a memo into an outline and then a slide whose builds follow the scroll.
+// Motion rules: docs/06 §4 (entrance, scroll or interaction only; reduced motion respected).
 export default function Home() {
   return (
     <div className="m-root">
@@ -19,12 +21,10 @@ export default function Home() {
       <main id="main">
         <Hero />
         <ProofStrip />
-        <Overview />
-        <TwoWays />
+        <StoryScroll />
         <EditDemo />
         <Checks />
         <UseCases />
-        <ThreeSteps />
         <Platform />
         <Gallery />
         <Stories />

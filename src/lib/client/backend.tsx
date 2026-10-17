@@ -18,6 +18,9 @@ import { offlineOutline, offlineSlides } from "@/lib/ai/offline";
 import { buildProposal, EditError, offlineEdit } from "@/lib/ai/edit";
 import { composeSlide } from "@/lib/deck/compose";
 import { suggestedCount } from "@/lib/deck/stats";
+import { snapshotBefore, type VersionKind, type VersionMeta } from "@/lib/deck/versions";
+import { SERVER_EVENTS } from "@/lib/events";
+import { demoSink, setTrackSink, track, type TrackedEvent } from "./track";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string) {
@@ -37,6 +40,9 @@ export interface DeckSummary {
   brand?: Brand;
   /** Elements still marked "Suggested" (AI content not found in the user's material). */
   suggestedCount?: number;
+  /** Set for decks in Trash: when it was deleted, and when it will be deleted for good. */
+  deletedAt?: string;
+  purgeAt?: string;
 }
 
 export interface Me {
@@ -45,6 +51,10 @@ export interface Me {
   currentPeriodEnd: string | null;
   hasBillingAccount: boolean;
   creditsRemaining: number | null;
+  /** This month's allowance right now (starter credits for new free accounts). */
+  creditLimit?: number | null;
+  /** Set when a free account has less than the full allowance, and why. */
+  credits?: { reason: "starter" | "crowded" | "disposable"; full: number | null; unlockAt: string | null } | null;
   deckCount: number;
   features: { gemini: boolean; billing: boolean; storage: boolean; unsplash?: boolean; sharing?: boolean };
   storage?: { usedBytes: number; limitBytes: number; count: number };
@@ -54,7 +64,56 @@ export interface ShareOptions {
   name?: string;
   password?: string;
   allowDownload?: boolean;
+  allowComments?: boolean;
+  /** Alert the owner when someone opens the link. */
+  notify?: boolean;
   expiresAt?: string | null;
+}
+
+export interface DeckComment {
+  id: string;
+  deckId: string;
+  slideId: string;
+  elementId: string | null;
+  parentId: string | null;
+  linkId: string | null;
+  /** Name of the share link it came through ("Acme investors"). */
+  linkName: string | null;
+  authorName: string;
+  authorEmail: string | null;
+  byOwner: boolean;
+  body: string;
+  resolved: boolean;
+  /** A viewer reported it; hidden from other viewers until you keep or delete it. */
+  reported?: boolean;
+  createdAt: string;
+}
+
+export interface NewCommentInput {
+  slideId: string;
+  elementId?: string;
+  parentId?: string;
+  body: string;
+  authorName?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  kind: "link_opened" | "link_viewed" | "comment";
+  deckId: string | null;
+  title: string;
+  body: string;
+  url: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface AlertSettings {
+  email: boolean;
+  /** False when the server has no email provider configured. */
+  emailAvailable: boolean;
+  slack: boolean;
+  slackHint: string | null;
 }
 
 export interface ShareLink {
@@ -64,6 +123,8 @@ export interface ShareLink {
   snapshotVersion: number;
   hasPassword: boolean;
   allowDownload: boolean;
+  allowComments: boolean;
+  notify: boolean;
   expiresAt: string | null;
   revoked: boolean;
   live: boolean;
@@ -125,7 +186,18 @@ export interface Backend {
   getDeck(id: string): Promise<Deck>;
   createDeck(deck: Deck): Promise<Deck>;
   patchDeck(id: string, version: number, ops: PatchOp[], author: "user" | "ai"): Promise<number>;
+  /** Moves a deck to Trash. */
   deleteDeck(id: string): Promise<void>;
+  listTrash(): Promise<DeckSummary[]>;
+  restoreDeck(id: string): Promise<void>;
+  /** Deletes a deck in Trash for good. */
+  purgeDeck(id: string): Promise<void>;
+  /** Saved versions of a deck, newest first. */
+  listVersions(deckId: string): Promise<VersionMeta[]>;
+  getVersion(deckId: string, versionId: string): Promise<Deck>;
+  saveVersion(deckId: string, opts?: { label?: string; kind?: "named" | "before-restore" }): Promise<void>;
+  renameVersion(deckId: string, versionId: string, label: string): Promise<void>;
+  deleteVersion(deckId: string, versionId: string): Promise<void>;
   outline(input: GenerationInput): Promise<{ outline: Outline; engine: string }>;
   generate(args: GenerateArgs, onSlide: (index: number, slide: Slide) => void, signal?: AbortSignal): Promise<{ deck: Deck; issues: QaIssue[]; engine: string }>;
   edit(deck: Deck, scope: EditScope, instruction: string): Promise<EditResult>;
@@ -150,8 +222,21 @@ export interface Backend {
   trackStock(downloadLocation: string): Promise<void>;
   /** Everything stored for this account, as a ZIP (decks as JSON plus photo files). */
   exportData(onProgress?: (msg: string) => void): Promise<Blob>;
+  /** Session token to prove who you are on public routes (share links), or null in demo mode / signed out. */
+  authToken(): Promise<string | null>;
   /** Permanently deletes the account, decks and photos. */
   deleteAccount(): Promise<void>;
+  /** Comments on a deck (yours, and from share links that allow comments). */
+  listComments(deckId: string): Promise<DeckComment[]>;
+  addComment(deckId: string, c: NewCommentInput): Promise<DeckComment>;
+  updateComment(id: string, patch: { resolved?: boolean; body?: string; keep?: true }): Promise<DeckComment>;
+  deleteComment(id: string): Promise<void>;
+  /** The bell: share-link opens, view summaries and comments. */
+  listNotifications(): Promise<{ unread: number; items: AppNotification[] }>;
+  markNotificationsRead(ids: string[] | "all"): Promise<void>;
+  getAlertSettings(): Promise<AlertSettings>;
+  saveAlertSettings(patch: { email?: boolean; slackUrl?: string | null }): Promise<void>;
+  testAlert(): Promise<void>;
 }
 
 /** Zips the account data. Photos are fetched one by one so a large library doesn't spike memory. */
@@ -302,6 +387,30 @@ export function CloudBackendProvider({ children }: { children: ReactNode }) {
       async deleteDeck(id) {
         await call(`/api/decks/${encodeURIComponent(id)}`, { method: "DELETE" });
       },
+      async listTrash() {
+        return ((await (await call("/api/decks?trash=1")).json()) as { decks: DeckSummary[] }).decks;
+      },
+      async restoreDeck(id) {
+        await call(`/api/decks/${encodeURIComponent(id)}/restore`, { method: "POST" });
+      },
+      async purgeDeck(id) {
+        await call(`/api/decks/${encodeURIComponent(id)}?permanent=1`, { method: "DELETE" });
+      },
+      async listVersions(deckId) {
+        return ((await (await call(`/api/decks/${encodeURIComponent(deckId)}/versions`)).json()) as { versions: VersionMeta[] }).versions;
+      },
+      async getVersion(deckId, vid) {
+        return ((await (await call(`/api/decks/${encodeURIComponent(deckId)}/versions/${encodeURIComponent(vid)}`)).json()) as { deck: Deck }).deck;
+      },
+      async saveVersion(deckId, opts = {}) {
+        await call(`/api/decks/${encodeURIComponent(deckId)}/versions`, { method: "POST", body: JSON.stringify(opts) });
+      },
+      async renameVersion(deckId, vid, label) {
+        await call(`/api/decks/${encodeURIComponent(deckId)}/versions/${encodeURIComponent(vid)}`, { method: "PATCH", body: JSON.stringify({ label }) });
+      },
+      async deleteVersion(deckId, vid) {
+        await call(`/api/decks/${encodeURIComponent(deckId)}/versions/${encodeURIComponent(vid)}`, { method: "DELETE" });
+      },
       async outline(input) {
         return (await (await call("/api/ai/outline", { method: "POST", body: JSON.stringify({ input }) })).json()) as { outline: Outline; engine: string };
       },
@@ -404,8 +513,66 @@ export function CloudBackendProvider({ children }: { children: ReactNode }) {
         await call("/api/me/account", { method: "DELETE", body: JSON.stringify({ confirm: "DELETE" }) });
         for (const a of await localAssets.list().catch(() => [])) await localAssets.remove(a.id).catch(() => undefined);
       },
+      async listComments(deckId) {
+        return ((await (await call(`/api/decks/${encodeURIComponent(deckId)}/comments`)).json()) as { comments: DeckComment[] }).comments;
+      },
+      async addComment(deckId, c) {
+        const r = await call(`/api/decks/${encodeURIComponent(deckId)}/comments`, { method: "POST", body: JSON.stringify(c) });
+        return ((await r.json()) as { comment: DeckComment }).comment;
+      },
+      async updateComment(id, patch) {
+        const r = await call(`/api/comments/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+        return ((await r.json()) as { comment: DeckComment }).comment;
+      },
+      async deleteComment(id) {
+        await call(`/api/comments/${encodeURIComponent(id)}`, { method: "DELETE" });
+      },
+      async listNotifications() {
+        return (await (await call("/api/notifications")).json()) as { unread: number; items: AppNotification[] };
+      },
+      async markNotificationsRead(ids) {
+        await call("/api/notifications", { method: "POST", body: JSON.stringify(ids === "all" ? { all: true } : { ids }) });
+      },
+      async getAlertSettings() {
+        return (await (await call("/api/me/alerts")).json()) as AlertSettings;
+      },
+      async saveAlertSettings(patch) {
+        await call("/api/me/alerts", { method: "PUT", body: JSON.stringify(patch) });
+      },
+      async testAlert() {
+        await call("/api/me/alerts", { method: "POST", body: "{}" });
+      },
+      async authToken() {
+        return isSignedIn ? ((await getToken().catch(() => null)) ?? null) : null;
+      },
     };
-  }, [call, isLoaded, isSignedIn]);
+  }, [call, isLoaded, isSignedIn, getToken]);
+
+  // Product events: batched, sent a few seconds after the last one or when the page is hidden.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    let queue: TrackedEvent[] = [];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      const batch = queue.filter((e) => !SERVER_EVENTS.has(e.name)).slice(0, 25);
+      queue = [];
+      if (batch.length) void call("/api/activity", { method: "POST", body: JSON.stringify({ events: batch }), keepalive: true }).catch(() => undefined);
+    };
+    setTrackSink((e) => {
+      queue.push(e);
+      if (queue.length >= 20) flush();
+      else if (!timer) timer = setTimeout(flush, 3000);
+    });
+    const onHide = () => document.visibilityState === "hidden" && flush();
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      flush();
+      setTrackSink(null);
+    };
+  }, [call, isSignedIn]);
 
   return <BackendContext value={value}>{children}</BackendContext>;
 }
@@ -457,6 +624,71 @@ function touch(id: string) {
   localStorage.setItem(updatedAtKey, JSON.stringify(m));
 }
 
+// Demo Trash and version history, kept in this browser. Storage is small, so demo mode keeps
+// fewer automatic versions than the server and drops the oldest when the browser is full.
+const TRASH_KEY = "kinetic.demo.trash.v1";
+const VERSIONS_KEY = "kinetic.demo.versions.v1";
+const DEMO_TRASH_DAYS = 30;
+const DEMO_MAX_AUTO = 15;
+type DemoVersion = VersionMeta & { doc: Deck };
+
+function readJsonKey<T>(key: string, fallback: T): T {
+  try {
+    return (JSON.parse(localStorage.getItem(key) ?? "null") as T) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+const demoTrash = {
+  read: () => readJsonKey<Record<string, { deck: Deck; deletedAt: string }>>(TRASH_KEY, {}),
+  write: (t: Record<string, { deck: Deck; deletedAt: string }>) => localStorage.setItem(TRASH_KEY, JSON.stringify(t)),
+};
+const demoVersions = {
+  read: () => readJsonKey<Record<string, DemoVersion[]>>(VERSIONS_KEY, {}),
+  write(all: Record<string, DemoVersion[]>) {
+    // Drop the oldest automatic versions until it fits in the browser's storage.
+    for (;;) {
+      try {
+        localStorage.setItem(VERSIONS_KEY, JSON.stringify(all));
+        return;
+      } catch {
+        let oldest: { deck: string; i: number; at: string } | null = null;
+        for (const [deck, list] of Object.entries(all))
+          list.forEach((v, i) => {
+            if (v.kind !== "named" && (!oldest || v.createdAt < oldest.at)) oldest = { deck, i, at: v.createdAt };
+          });
+        if (!oldest) return;
+        const o = oldest as { deck: string; i: number };
+        all[o.deck].splice(o.i, 1);
+      }
+    }
+  },
+  add(deck: Deck, kind: VersionKind, label: string | null = null) {
+    const all = demoVersions.read();
+    const list = all[deck.id] ?? [];
+    list.unshift({ id: newId("vr"), version: deck.version, kind, label, createdAt: new Date().toISOString(), title: deck.title, slideCount: deck.slides.length, doc: structuredClone(deck) });
+    let auto = 0;
+    all[deck.id] = list.filter((v) => v.kind === "named" || ++auto <= DEMO_MAX_AUTO);
+    demoVersions.write(all);
+  },
+};
+
+const COMMENTS_KEY = "kinetic.demo.comments.v1";
+const demoComments = {
+  read: () => readJsonKey<DeckComment[]>(COMMENTS_KEY, []),
+  write(list: DeckComment[]) {
+    try {
+      localStorage.setItem(COMMENTS_KEY, JSON.stringify(list.slice(-1000)));
+    } catch {
+      throw new ApiError(507, "Your browser storage is full. Delete a deck and try again.", "storage_full");
+    }
+  },
+};
+
+function demoSummary(d: Deck, updatedAt: string): DeckSummary {
+  return { id: d.id, title: d.title, themeId: d.themeId, version: d.version, updatedAt, firstSlide: d.slides[0] ?? null, motionIntensity: d.motionIntensity, slideCount: d.slides.length, brand: d.brand, suggestedCount: suggestedCount(d) };
+}
+
 const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     const t = setTimeout(resolve, ms);
@@ -476,7 +708,7 @@ export function DemoBackendProvider({ children }: { children: ReactNode }) {
         const s = readStore();
         const times = JSON.parse(localStorage.getItem(updatedAtKey) ?? "{}") as Record<string, string>;
         return Object.values(s)
-          .map((d) => ({ id: d.id, title: d.title, themeId: d.themeId, version: d.version, updatedAt: times[d.id] ?? new Date(0).toISOString(), firstSlide: d.slides[0] ?? null, motionIntensity: d.motionIntensity, slideCount: d.slides.length, brand: d.brand, suggestedCount: suggestedCount(d) }))
+          .map((d) => demoSummary(d, times[d.id] ?? new Date(0).toISOString()))
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       },
       async getDeck(id) {
@@ -489,14 +721,18 @@ export function DemoBackendProvider({ children }: { children: ReactNode }) {
         s[deck.id] = { ...deck, version: 0 };
         writeStore(s);
         touch(deck.id);
+        demoVersions.add(s[deck.id], "created");
+        track("deck_created", { deckId: deck.id, props: { slides: deck.slides.length, suggested: suggestedCount(deck) } });
         return s[deck.id];
       },
-      async patchDeck(id, version, ops) {
+      async patchDeck(id, version, ops, author) {
         const s = readStore();
         const d = s[id];
         if (!d) throw new ApiError(404, "Deck not found.", "not_found");
         if (d.version !== version) throw new ApiError(409, "This deck changed in another tab. Reload to get the latest version.", "conflict");
         const next = applyDeckPatch(d, ops).doc;
+        const kind = snapshotBefore(version, author);
+        if (kind) demoVersions.add(d, kind);
         s[id] = { ...next, version: version + 1 };
         writeStore(s);
         touch(id);
@@ -504,12 +740,80 @@ export function DemoBackendProvider({ children }: { children: ReactNode }) {
       },
       async deleteDeck(id) {
         const s = readStore();
+        const d = s[id];
+        if (!d) return;
+        const t = demoTrash.read();
+        t[id] = { deck: d, deletedAt: new Date().toISOString() };
+        demoTrash.write(t);
         delete s[id];
         writeStore(s);
       },
+      async listTrash() {
+        const t = demoTrash.read();
+        const cutoff = Date.now() - DEMO_TRASH_DAYS * 86_400_000;
+        let purged = false;
+        for (const [id, e] of Object.entries(t))
+          if (new Date(e.deletedAt).getTime() < cutoff) {
+            delete t[id];
+            purged = true;
+          }
+        if (purged) demoTrash.write(t);
+        return Object.values(t)
+          .map((e) => ({ ...demoSummary(e.deck, e.deletedAt), deletedAt: e.deletedAt, purgeAt: new Date(new Date(e.deletedAt).getTime() + DEMO_TRASH_DAYS * 86_400_000).toISOString() }))
+          .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+      },
+      async restoreDeck(id) {
+        const t = demoTrash.read();
+        const e = t[id];
+        if (!e) throw new ApiError(404, "That deck isn't in Trash.", "not_found");
+        const s = readStore();
+        s[id] = e.deck;
+        writeStore(s);
+        touch(id);
+        delete t[id];
+        demoTrash.write(t);
+      },
+      async purgeDeck(id) {
+        const t = demoTrash.read();
+        delete t[id];
+        demoTrash.write(t);
+        const v = demoVersions.read();
+        delete v[id];
+        demoVersions.write(v);
+        demoComments.write(demoComments.read().filter((c) => c.deckId !== id));
+      },
+      async listVersions(deckId) {
+        return (demoVersions.read()[deckId] ?? []).map(({ doc: _doc, ...meta }) => (void _doc, meta));
+      },
+      async getVersion(deckId, vid) {
+        const v = (demoVersions.read()[deckId] ?? []).find((x) => x.id === vid);
+        if (!v) throw new ApiError(404, "Version not found.", "not_found");
+        return v.doc;
+      },
+      async saveVersion(deckId, opts = {}) {
+        const d = readStore()[deckId];
+        if (!d) throw new ApiError(404, "Deck not found.", "not_found");
+        const kind = opts.kind ?? "named";
+        demoVersions.add(d, kind, kind === "named" ? opts.label?.trim().slice(0, 80) || null : null);
+      },
+      async renameVersion(deckId, vid, label) {
+        const all = demoVersions.read();
+        const v = all[deckId]?.find((x) => x.id === vid);
+        if (!v) throw new ApiError(404, "Version not found.", "not_found");
+        v.label = label.trim().slice(0, 80);
+        v.kind = "named";
+        demoVersions.write(all);
+      },
+      async deleteVersion(deckId, vid) {
+        const all = demoVersions.read();
+        all[deckId] = (all[deckId] ?? []).filter((x) => x.id !== vid);
+        demoVersions.write(all);
+      },
       async outline(input) {
         await sleep(350);
-        return { outline: offlineOutline(input), engine: "offline" };
+        const outline = offlineOutline(input);
+        track("outline_created", { props: { engine: "offline", slides: outline.slides.length, deckType: input.deckType } });
+        return { outline, engine: "offline" };
       },
       async generate(args, onSlide, signal) {
         const slotted = offlineSlides(args.outline);
@@ -576,12 +880,60 @@ export function DemoBackendProvider({ children }: { children: ReactNode }) {
       async deleteAccount() {
         localStorage.removeItem(STORE_KEY);
         localStorage.removeItem(updatedAtKey);
+        localStorage.removeItem(TRASH_KEY);
+        localStorage.removeItem(VERSIONS_KEY);
+        localStorage.removeItem(COMMENTS_KEY);
         for (const a of await localAssets.list()) await browserAssets.remove(a.id);
+      },
+      async listComments(deckId) {
+        return demoComments.read().filter((c) => c.deckId === deckId);
+      },
+      async addComment(deckId, c) {
+        if (!readStore()[deckId]) throw new ApiError(404, "Deck not found.", "not_found");
+        const all = demoComments.read();
+        if (c.parentId && !all.some((x) => x.id === c.parentId && !x.parentId)) throw new ApiError(400, "Reply to the first comment of the thread.", "invalid_input");
+        const comment: DeckComment = { id: crypto.randomUUID(), deckId, slideId: c.slideId, elementId: c.elementId ?? null, parentId: c.parentId ?? null, linkId: null, linkName: null, authorName: c.authorName ?? "You", authorEmail: null, byOwner: true, body: c.body.trim().slice(0, 2000), resolved: false, createdAt: new Date().toISOString() };
+        demoComments.write([...all, comment]);
+        track("comment_added", { deckId, props: { reply: !!c.parentId, by: "owner" } });
+        return comment;
+      },
+      async updateComment(id, patch) {
+        const all = demoComments.read();
+        const c = all.find((x) => x.id === id);
+        if (!c) throw new ApiError(404, "Comment not found.", "not_found");
+        if (patch.resolved !== undefined) c.resolved = patch.resolved;
+        if (patch.keep) c.reported = false;
+        if (patch.body !== undefined) c.body = patch.body.trim().slice(0, 2000);
+        demoComments.write(all);
+        return c;
+      },
+      async deleteComment(id) {
+        demoComments.write(demoComments.read().filter((x) => x.id !== id && x.parentId !== id));
+      },
+      async listNotifications() {
+        return { unread: 0, items: [] };
+      },
+      async markNotificationsRead() {},
+      async getAlertSettings() {
+        throw new ApiError(503, "Alerts need an account. Add Clerk and Supabase keys to turn them on.", "alerts_disabled");
+      },
+      async saveAlertSettings() {
+        throw new ApiError(503, "Alerts need an account.", "alerts_disabled");
+      },
+      async testAlert() {
+        throw new ApiError(503, "Alerts need an account.", "alerts_disabled");
+      },
+      async authToken() {
+        return null;
       },
     }),
     [],
   );
   useEffect(() => setAssetLoader((id) => localAssets.blob(id)), []);
+  useEffect(() => {
+    setTrackSink(demoSink);
+    return () => setTrackSink(null);
+  }, []);
   return <BackendContext value={value}>{children}</BackendContext>;
 }
 

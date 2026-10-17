@@ -2,6 +2,7 @@
 // The model (or the offline engine) proposes new slide content; this module turns that into
 // JSON Patch ops, runs the quality gates, and enforces the scope before anything is returned.
 import type { Deck, Element, Slide } from "../deck/schema";
+import { isFree } from "../deck/schema";
 import { applyDeckPatch, checkScope, type EditScope, type PatchOp } from "../deck/patch";
 import { composeSlide, elementToSlot, swapLayout, toSlotted, type SlottedSlide, type SlotContent } from "../deck/compose";
 import { runQa, wordCount, type QaIssue } from "../deck/qa";
@@ -145,6 +146,17 @@ function title(slide: Slide): string {
   return h?.type === "text" ? h.content : "";
 }
 
+/** A title of at most 8 words: the part before a colon or dash when that reads as a title, else the first words. */
+export function shortTitle(s: string, max = 8): string {
+  const t = s.trim().replace(/[.]+$/, "");
+  if (wordCount(t) <= max) return t;
+  const head = t.split(/\s*(?::|\s[-–—]\s|;)\s*/)[0];
+  if (wordCount(head) >= 2 && wordCount(head) <= max) return head;
+  const clause = t.split(/,\s*/)[0];
+  if (wordCount(clause) >= 3 && wordCount(clause) <= max) return clause;
+  return t.split(/\s+/).slice(0, max).join(" ").replace(/[,;:]$/, "");
+}
+
 export function offlineEdit(deck: Deck, scope: EditScope, instruction: string): { summary: string; change: Change } {
   const ins = instruction.toLowerCase();
   const idx = selectedSlideIndexes(deck, scope);
@@ -160,10 +172,14 @@ export function offlineEdit(deck: Deck, scope: EditScope, instruction: string): 
   }
 
   if (scope.kind === "deck") {
+    if (/title|headline|heading/.test(ins) && /short|concise|punch|tight|trim/.test(ins)) {
+      const slides = deck.slides.map((s) => ({ ...s, elements: s.elements.map((e) => (e.type === "text" && e.role === "h1" && !isFree(e) ? { ...e, content: shortTitle(e.content) } : e)) }));
+      return { summary: "Shortened the titles.", change: { kind: "deck", slides } };
+    }
     if (/short|concise|punch|tight|less text/.test(ins)) {
       return { summary: "Shortened text on every slide.", change: { kind: "deck", slides: deck.slides.map((s) => ({ ...s, elements: s.elements.map(shortenElement) })) } };
     }
-    throw new EditError("Without Gemini, whole-deck edits support: Shorten. Add a GEMINI_API_KEY for free-form edits.");
+    throw new EditError("Without Gemini, whole-deck edits support: Shorten, Shorten every title. Add a GEMINI_API_KEY for free-form edits.");
   }
 
   // Slide scope

@@ -51,6 +51,8 @@ export function ShareDialog({ deckId, open, onClose }: { deckId: string; open: b
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [allowDownload, setAllowDownload] = useState(false);
+  const [allowComments, setAllowComments] = useState(false);
+  const [notify, setNotify] = useState(true);
   const [expiry, setExpiry] = useState<"never" | "7" | "30">("never");
 
   useEffect(() => {
@@ -78,7 +80,7 @@ export function ShareDialog({ deckId, open, onClose }: { deckId: string; open: b
     setError(null);
     try {
       const expiresAt = expiry === "never" ? undefined : new Date(Date.now() + Number(expiry) * 86_400_000).toISOString();
-      const link = await backend.createShare(deckId, { name: name.trim(), password: password || undefined, allowDownload, expiresAt });
+      const link = await backend.createShare(deckId, { name: name.trim(), password: password || undefined, allowDownload, allowComments, notify, expiresAt });
       setLinks((l) => [link, ...(l ?? [])]);
       setName("");
       setPassword("");
@@ -147,6 +149,20 @@ export function ShareDialog({ deckId, open, onClose }: { deckId: string; open: b
                 <input type="checkbox" className="h-4 w-4" checked={allowDownload} onChange={(e) => setAllowDownload(e.target.checked)} />
                 Let viewers download a PDF
               </label>
+              <label className="flex items-start gap-2 text-[13px]">
+                <input type="checkbox" className="mt-0.5 h-4 w-4" checked={allowComments} onChange={(e) => setAllowComments(e.target.checked)} />
+                <span>
+                  Let viewers comment
+                  <span className="block text-[12px] text-ink-2">Good for a colleague&rsquo;s review before you send it. Comments appear in the editor.</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-[13px]">
+                <input type="checkbox" className="mt-0.5 h-4 w-4" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+                <span>
+                  Alert me when it&rsquo;s opened
+                  <span className="block text-[12px] text-ink-2">With a summary of time per slide. Email and Slack in <Link href="/settings#alerts" className="text-accent hover:underline">Settings</Link>.</span>
+                </span>
+              </label>
             </div>
             <button type="button" className="btn btn-primary btn-sm mt-4" onClick={create} disabled={busy || (password.length > 0 && password.length < 4)}>
               {busy ? "Creating" : "Create link and copy it"}
@@ -197,6 +213,14 @@ export function ShareDialog({ deckId, open, onClose }: { deckId: string; open: b
                         <label className="flex items-center gap-1.5 px-1">
                           <input type="checkbox" className="h-3.5 w-3.5" checked={l.allowDownload} onChange={(e) => patch(l.id, { allowDownload: e.target.checked })} />
                           PDF download
+                        </label>
+                        <label className="flex items-center gap-1.5 px-1">
+                          <input type="checkbox" className="h-3.5 w-3.5" checked={l.allowComments} onChange={(e) => patch(l.id, { allowComments: e.target.checked })} />
+                          Comments
+                        </label>
+                        <label className="flex items-center gap-1.5 px-1">
+                          <input type="checkbox" className="h-3.5 w-3.5" checked={l.notify} onChange={(e) => patch(l.id, { notify: e.target.checked })} />
+                          Alerts
                         </label>
                         {l.hasPassword ? (
                           <button type="button" className="btn btn-ghost btn-sm min-h-7 px-2 text-[12px]" onClick={() => patch(l.id, { password: null })}>Remove password</button>

@@ -10,7 +10,7 @@ import { AppShell } from "@/components/app/AppShell";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { SlideView } from "@/components/deck/SlideView";
 import { ApiError, useBackend } from "@/lib/client/backend";
-import { DECK_TYPES, type DeckType, type GenerationInput, type Intensity, type Outline, type Slide } from "@/lib/deck/schema";
+import { DECK_TYPES, Deck as DeckSchema, type Deck, type DeckType, type GenerationInput, type Intensity, type Outline, type Slide } from "@/lib/deck/schema";
 import { THEMES, getTheme } from "@/lib/deck/themes";
 import { LAYOUTS } from "@/lib/deck/layouts";
 import { outlineSlideToSlotted } from "@/lib/ai/offline";
@@ -25,6 +25,9 @@ import type { AssetMeta } from "@/lib/client/assets";
 import { ASSET_PREFIX } from "@/lib/deck/media";
 import { placePhotos } from "@/lib/deck/place";
 import { withBrand } from "@/lib/deck/themes";
+import { track } from "@/lib/client/track";
+import { attachJob, jobDone, jobFailed, jobSlide, newJob, writingSlide, type GenJob } from "@/lib/client/genjob";
+import { newId } from "@/lib/deck/ids";
 
 const MAX_NOTES = 400_000;
 const toPhoto = (a: AssetMeta): DraftPhoto => ({ id: a.id, name: a.name, src: ASSET_PREFIX + a.id, alt: a.alt || a.name });
@@ -111,6 +114,8 @@ function NewDeckInner() {
   const [error, setError] = useState<{ text: string; upgrade: boolean } | null>(null);
   const [streamed, setStreamed] = useState<(Slide | undefined)[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const jobRef = useRef<GenJob | null>(null);
+  const [handoff, setHandoff] = useState(false);
 
   useEffect(() => {
     try {
@@ -154,14 +159,23 @@ function NewDeckInner() {
     setStreamed(new Array(outline.slides.length).fill(undefined));
     const ac = new AbortController();
     abortRef.current = ac;
+    const job = newJob(outline.slides.length, ac);
+    jobRef.current = job;
     const t = lookTemplate;
+    const t0 = performance.now();
+    let firstSlideMs: number | null = null;
     try {
-      const { deck } = await backend.generate({ input: fullInput, outline, themeId: t ? t.themeId : themeId, intensity }, (i, slide) => setStreamed((s) => {
-        const next = [...s];
-        next[i] = slide;
-        return next;
-      }), ac.signal);
-      let final = t ? { ...deck, brand: { ...t.brand, name: (brandName.trim() || outline.title).slice(0, 40) || "Brand" } } : kit ? { ...deck, brand: kit.kit } : deck;
+      const { deck, engine } = await backend.generate({ input: fullInput, outline, themeId: t ? t.themeId : themeId, intensity }, (i, slide) => {
+        firstSlideMs ??= Math.round(performance.now() - t0);
+        jobSlide(job, i, slide);
+        setStreamed((s) => {
+          const next = [...s];
+          next[i] = slide;
+          return next;
+        });
+      }, ac.signal);
+      track("timing", { props: { what: "generate", ms: Math.round(performance.now() - t0), firstSlideMs: firstSlideMs ?? -1, slides: deck.slides.length, engine, early: !!job.deckId, ok: true } });
+      let final = withLook(deck);
       // Free stock photos fill the photo slots the user's own photos didn't cover.
       let extra: DraftPhoto[] = [];
       if (stockOn && stock) {
@@ -171,14 +185,55 @@ function NewDeckInner() {
       final = placePhotos(final, [...photos, ...extra]).deck;
       const used = new Set(final.slides.flatMap((s) => s.elements.flatMap((e) => (e.type === "image" ? [e.src] : []))));
       for (const p of extra as (DraftPhoto & { downloadLocation: string })[]) if (used.has(p.src)) void backend.trackStock(p.downloadLocation);
+      // Already editing ("Start editing now"): hand the finished slides to the editor instead.
+      if (job.deckId) return jobDone(job, final.slides);
       const saved = await backend.createDeck(final);
       sessionStorage.removeItem(DRAFT_KEY);
       router.push(`/d/${saved.id}`);
     } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) track("timing", { props: { what: "generate", ms: Math.round(performance.now() - t0), ok: false } });
+      if (job.deckId) return jobFailed(job, e instanceof DOMException && e.name === "AbortError" ? "you stopped it" : errMsg(e, "an error").text.replace(/\.$/, ""));
       setError(errMsg(e, "Generation stopped. Your outline is saved; try again."));
       setStep("style");
     } finally {
       abortRef.current = null;
+    }
+  }
+
+  /** The look the user picked (template design or brand kit) applied to a deck. */
+  function withLook(d: Deck): Deck {
+    const t = lookTemplate;
+    if (t) return { ...d, brand: { ...t.brand, name: (brandName.trim() || outline?.title || "").slice(0, 40) || "Brand" } };
+    return kit ? { ...d, brand: kit.kit } : d;
+  }
+
+  /** Saves the deck with the slides written so far and opens the editor; the rest keep coming. */
+  async function startEditing() {
+    const job = jobRef.current;
+    if (!job || !outline || job.deckId || handoff) return;
+    setHandoff(true);
+    try {
+      const slides = outline.slides.map((s, i) => (streamed[i] ? { ...streamed[i]!, id: job.ids[i] } : writingSlide(job.ids[i], s.title)));
+      const early = withLook(
+        DeckSchema.parse({
+          id: newId("dk"),
+          version: 0,
+          title: outline.title.slice(0, 200) || "Untitled deck",
+          themeId: lookTemplate ? lookTemplate.themeId : themeId,
+          motionIntensity: intensity,
+          language: fullInput.language.slice(0, 16),
+          source: `${fullInput.prompt}\n\n${fullInput.notes}`.trim().slice(0, 400_000),
+          slides,
+        }),
+      );
+      const saved = await backend.createDeck(early);
+      job.inserted = early.slides;
+      attachJob(job, saved.id);
+      sessionStorage.removeItem(DRAFT_KEY);
+      router.push(`/d/${saved.id}`);
+    } catch (e) {
+      setError(errMsg(e, "The deck couldn't be saved yet. It will open when all slides are written."));
+      setHandoff(false);
     }
   }
 
@@ -480,11 +535,16 @@ function NewDeckInner() {
         <section className="panel-in mt-8" aria-labelledby="gen-h">
           <div className="flex items-center justify-between gap-4">
             <h2 id="gen-h" className="text-[22px] font-semibold tracking-[-0.01em]">Building your deck</h2>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => abortRef.current?.abort()}>Stop</button>
+            <span className="flex items-center gap-2">
+              <button type="button" className="btn btn-primary btn-sm" onClick={startEditing} disabled={handoff || !streamed[0] || streamed.filter(Boolean).length === outline.slides.length}>
+                {handoff ? "Opening" : "Start editing now"}
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => abortRef.current?.abort()} disabled={handoff}>Stop</button>
+            </span>
           </div>
           <p className="mt-1 text-[14px] text-ink-2" role="status" aria-live="polite">
             {streamed.filter(Boolean).length} of {outline.slides.length} slides written
-            {streamed.filter(Boolean).length === outline.slides.length ? ". Saving and opening the editor." : "."}
+            {streamed.filter(Boolean).length === outline.slides.length ? ". Saving and opening the editor." : streamed[0] ? ". You can start editing slide 1; the rest will keep arriving." : "."}
           </p>
           <ol className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {outline.slides.map((s, i) => {

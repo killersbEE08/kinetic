@@ -6,7 +6,8 @@
   --surface: #ffffff;
   --elevated: #ffffff;
   --ink: #101114;
-  --ink-2: #70747d;
+  /* Secondary text: at least 4.5:1 on the canvas and on the light grey panels (WCAG AA). */
+  --ink-2: #5f636b;
   --line: #e7e9ed;
   --accent: #2563d9;
   --accent-ink: #ffffff;
@@ -80,6 +81,8 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* Base controls. In the components layer so utilities on an element (h-9, text-[13px], px-2...) win. */
+@layer components {
 /* Buttons (docs/02 §5.4) */
 .btn {
   display: inline-flex;
@@ -160,6 +163,13 @@ h3 {
 .skeleton {
   background: color-mix(in srgb, var(--ink) 7%, transparent);
   border-radius: 6px;
+}
+
+/* Native selects: room for the arrow so labels never run under it. */
+select.field {
+  padding-right: 32px;
+  text-overflow: ellipsis;
+}
 }
 
 /* Slide renderer and motion. In the components layer so Tailwind utilities on slide markup win. */

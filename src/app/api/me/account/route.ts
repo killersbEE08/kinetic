@@ -44,8 +44,14 @@ export const DELETE = handle(async (req: Request) => {
   const own = await Promise.all([user.db.from("assets").delete().eq("owner_id", user.userId), user.db.from("decks").delete().eq("owner_id", user.userId)]);
   for (const r of own) if (r.error) dbError(r.error, "Could not delete your decks.");
   const admin = adminDb();
-  const sys = await Promise.all([admin.from("ai_usage").delete().eq("user_id", user.userId), admin.from("profiles").delete().eq("user_id", user.userId)]);
-  for (const r of sys) if (r.error) dbError(r.error, "Could not delete your account record.");
+  const sys = await Promise.all([
+    admin.from("ai_usage").delete().eq("user_id", user.userId),
+    admin.from("product_events").delete().eq("user_id", user.userId),
+    admin.from("notifications").delete().eq("user_id", user.userId),
+    admin.from("profiles").delete().eq("user_id", user.userId),
+  ]);
+  // Older databases may not have the activity tables yet; that is not a failure.
+  for (const r of sys) if (r.error && r.error.code !== "PGRST205" && r.error.code !== "42P01") dbError(r.error, "Could not delete your account record.");
 
   try {
     await createClerkClient({ secretKey: env("CLERK_SECRET_KEY") }).users.deleteUser(user.userId);

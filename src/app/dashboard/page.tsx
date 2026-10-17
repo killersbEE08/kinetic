@@ -3,9 +3,12 @@
 // Home after sign-in (docs/09). Answers "what do I do now?": start a deck (one box, four ways),
 // continue the last deck, or start from a template.
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, ClipboardPaste, FileUp, PenLine, RefreshCw } from "lucide-react";
+import { ArrowRight, Check, ClipboardPaste, Download, Eye, FilePlus2, FileUp, Images, Palette, PenLine, Play, RefreshCw, Share2 } from "lucide-react";
+import { NEW_SLIDES } from "@/lib/deck/starters";
+import { newId } from "@/lib/deck/ids";
+import type { Deck } from "@/lib/deck/schema";
 import { ErrorNote, UpgradeNote } from "@/components/ui/chrome";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { AppShell } from "@/components/app/AppShell";
@@ -150,8 +153,8 @@ function CreateBox() {
       : "PDF, Word, PowerPoint, Excel, CSV or text. Photos inside them are saved to your library.";
 
   return (
-    <section className="rounded-[14px] border border-line bg-surface shadow-[0_1px_2px_rgba(16,17,20,.06),0_4px_12px_rgba(16,17,20,.05)]" aria-label="Create a deck">
-      <div role="tablist" aria-label="How do you want to start?" className="flex gap-1 overflow-x-auto px-3 pt-2.5">
+    <section className="rounded-[18px] border border-line bg-surface shadow-[0_1px_2px_rgba(16,17,20,.05),0_12px_32px_-16px_rgba(16,17,20,.16)] transition-shadow focus-within:border-[color-mix(in_srgb,var(--accent)_45%,var(--line))] focus-within:shadow-[0_0_0_4px_color-mix(in_srgb,var(--accent)_12%,transparent),0_12px_32px_-16px_rgba(16,17,20,.16)]" aria-label="Create a deck">
+      <div role="tablist" aria-label="How do you want to start?" className="flex gap-1 overflow-x-auto px-3 pt-3">
         {MODES.map((m, i) => {
           const Icon = m.icon;
           const on = m.id === mode;
@@ -174,7 +177,7 @@ function CreateBox() {
                 setMode(next.id);
                 document.getElementById(`mode-${next.id}`)?.focus();
               }}
-              className={`inline-flex flex-none items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-[14px] font-medium ${on ? "border-ink text-ink" : "border-transparent text-ink-2 hover:text-ink"}`}
+              className={`inline-flex h-9 flex-none items-center gap-2 whitespace-nowrap rounded-[10px] px-3 text-[13.5px] font-medium transition-colors ${on ? "bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] text-ink" : "text-ink-2 hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] hover:text-ink"}`}
             >
               <Icon size={15} strokeWidth={1.75} aria-hidden="true" />
               {m.label}
@@ -183,12 +186,12 @@ function CreateBox() {
         })}
       </div>
 
-      <div id="create-panel" role="tabpanel" aria-labelledby={`mode-${mode}`} className="border-t border-line px-5 pb-5 pt-4" onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && go()}>
+      <div id="create-panel" role="tabpanel" aria-labelledby={`mode-${mode}`} className="px-5 pb-4 pt-3" onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && go()}>
         {mode === "describe" && (
           <textarea
             ref={promptRef}
             aria-label="What are you presenting?"
-            className="min-h-[88px] w-full resize-y bg-transparent text-[17px] leading-[1.5] outline-none placeholder:text-ink-2"
+            className="min-h-[96px] w-full resize-none bg-transparent text-[18px] leading-[1.5] tracking-[-0.005em] outline-none placeholder:text-[color-mix(in_srgb,var(--ink-2)_80%,transparent)]"
             placeholder="What are you presenting, and to whom? For example: Q3 results for the leadership team, using the numbers in my spreadsheet."
             value={prompt}
             maxLength={4000}
@@ -269,7 +272,25 @@ function CreateBox() {
           </ul>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        {mode === "describe" && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Examples">
+            {IDEAS.map((i) => (
+              <button
+                key={i.label}
+                type="button"
+                className="rounded-full border border-line bg-canvas px-3 py-1 text-[12px] text-ink-2 transition-colors hover:border-ink-2 hover:text-ink"
+                onClick={() => {
+                  setPrompt(i.prompt);
+                  setType(i.type);
+                  promptRef.current?.focus();
+                }}
+              >
+                {i.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="-mx-5 mt-4 flex flex-wrap items-center gap-2 border-t border-line px-5 pt-3.5">
           {mode !== "redesign" && (
             <Select label="Type" value={type} onChange={(v) => setType(v as DeckType)}>
               {DECK_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
@@ -307,24 +328,6 @@ function CreateBox() {
         </div>
         {error && <p className="mt-2 text-[13px] text-danger" role="alert">{error}</p>}
 
-        {mode === "describe" && (
-          <div className="mt-3 flex flex-wrap gap-2" aria-label="Examples">
-            {IDEAS.map((i) => (
-              <button
-                key={i.label}
-                type="button"
-                className="rounded-full border border-dashed border-line px-3 py-1 text-[12px] text-ink-2 hover:border-solid hover:border-ink-2 hover:text-ink"
-                onClick={() => {
-                  setPrompt(i.prompt);
-                  setType(i.type);
-                  promptRef.current?.focus();
-                }}
-              >
-                {i.label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
       <Suspense fallback={null}>
         <ModeFromUrl onMode={setMode} />
@@ -334,88 +337,154 @@ function CreateBox() {
   );
 }
 
+
 // ---------------------------------------------------------------------------
 
-function Status({ deck }: { deck: DeckSummary }) {
+function Status({ deck, compact = false }: { deck: DeckSummary; compact?: boolean }) {
   const n = deck.suggestedCount ?? 0;
-  if (n > 0) return <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-warning"><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />{n} suggested item{n > 1 ? "s" : ""} to check</span>;
-  return <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-success"><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />Ready to present</span>;
+  if (n > 0)
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-2 py-0.5 text-[11.5px] font-medium text-warning">
+        <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+        {compact ? `${n} to check` : `${n} suggested item${n > 1 ? "s" : ""} to check`}
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--success)_12%,transparent)] px-2 py-0.5 text-[11.5px] font-medium text-success">
+      <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+      Ready
+    </span>
+  );
 }
 
 function Thumb({ deck, play, className = "" }: { deck: DeckSummary; play?: boolean; className?: string }) {
   if (!deck.firstSlide) return <div className={`skeleton aspect-video ${className}`} />;
   return (
-    <div className={`overflow-hidden rounded-[8px] border border-line ${className}`}>
+    <div className={`overflow-hidden ${className}`}>
       <SlideView slide={deck.firstSlide} theme={withBrand(getTheme(deck.themeId), deck.brand)} intensity={deck.motionIntensity} mode={play ? "play" : "static"} step={9} playKey={play ? "on" : "off"} label={`First slide of ${deck.title}`} />
     </div>
   );
 }
 
-function Continue({ decks }: { decks: DeckSummary[] }) {
+function SectionHead({ id, title, count, href, link }: { id: string; title: string; count?: string; href?: string; link?: string }) {
+  return (
+    <div className="mb-4 flex items-baseline justify-between gap-3">
+      <h2 id={id} className="text-[16px] font-semibold tracking-[-0.01em]">
+        {title}
+        {count && <span className="tabular ml-2 text-[13px] font-normal text-ink-2">{count}</span>}
+      </h2>
+      {href && (
+        <Link href={href} className="inline-flex items-center gap-1 text-[13px] font-medium text-ink-2 hover:text-ink">
+          {link}
+          <ArrowRight size={14} aria-hidden="true" />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** The deck you were last working on, large, with its next actions. */
+function ContinueCard({ deck }: { deck: DeckSummary }) {
   const [hover, setHover] = useState(false);
+  return (
+    <article className="group grid overflow-hidden rounded-[18px] border border-line bg-surface md:grid-cols-[1.25fr_1fr]" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <Link href={`/d/${deck.id}`} aria-label={`Open ${deck.title}`} className="block bg-[color-mix(in_srgb,var(--ink)_4%,var(--canvas))] p-5">
+        <Thumb deck={deck} play={hover} className="rounded-[10px] shadow-[0_1px_2px_rgba(16,17,20,.08),0_12px_28px_-14px_rgba(16,17,20,.3)] transition-transform duration-300 group-hover:-translate-y-0.5" />
+      </Link>
+      <div className="flex min-w-0 flex-col gap-3 p-6">
+        <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink-2">
+          <span className="font-semibold uppercase tracking-[0.07em]">Continue editing</span>
+          <Status deck={deck} />
+        </div>
+        <h3 className="text-[22px] font-semibold leading-[1.2] tracking-[-0.02em]">{deck.title}</h3>
+        <dl className="grid grid-cols-3 gap-3 border-y border-line py-3 text-[12px]">
+          <div><dt className="text-ink-2">Slides</dt><dd className="tabular mt-0.5 text-[15px] font-semibold">{deck.slideCount}</dd></div>
+          <div><dt className="text-ink-2">Edited</dt><dd className="mt-0.5 text-[15px] font-semibold">{relTime(deck.updatedAt)}</dd></div>
+          <div className="min-w-0"><dt className="text-ink-2">Look</dt><dd className="mt-0.5 truncate text-[15px] font-semibold">{deck.brand?.name ?? getTheme(deck.themeId).name}</dd></div>
+        </dl>
+        <p className="text-[13px] leading-[20px] text-ink-2">
+          {(deck.suggestedCount ?? 0) > 0
+            ? "Some numbers or claims aren't in your notes yet. Open the editor and check each one marked Suggested before you present."
+            : "Every slide is checked. Present it here, download an editable PowerPoint, or share a link and see who opens it."}
+        </p>
+        <div className="mt-auto flex flex-wrap gap-2 pt-1">
+          <Link href={`/d/${deck.id}`} className="btn btn-primary btn-sm gap-1.5"><PenLine size={14} aria-hidden="true" />Open editor</Link>
+          <Link href={`/d/${deck.id}/present`} className="btn btn-secondary btn-sm gap-1.5"><Play size={13} aria-hidden="true" />Present</Link>
+          <Link href={`/d/${deck.id}?export=1`} className="btn btn-secondary btn-sm gap-1.5" aria-label="Download"><Download size={14} aria-hidden="true" /><span className="hidden sm:inline">Download</span></Link>
+          <Link href={`/d/${deck.id}?share=1`} className="btn btn-secondary btn-sm gap-1.5" aria-label="Share"><Share2 size={14} aria-hidden="true" /><span className="hidden sm:inline">Share</span></Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function DeckCard({ deck }: { deck: DeckSummary }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <li className="group relative" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <Link href={`/d/${deck.id}`} className="block rounded-[14px] outline-offset-4" aria-label={`Open ${deck.title}`}>
+        <Thumb deck={deck} play={hover} className="rounded-[12px] border border-line shadow-[0_1px_2px_rgba(16,17,20,.05)] transition-shadow duration-200 group-hover:shadow-[0_12px_28px_-12px_rgba(16,17,20,.28)]" />
+        <span className="mt-2.5 flex items-start justify-between gap-2 px-0.5">
+          <span className="min-w-0">
+            <span className="block truncate text-[14px] font-semibold">{deck.title}</span>
+            <span className="tabular block text-[12px] text-ink-2">{deck.slideCount} slides · {relTime(deck.updatedAt)}</span>
+          </span>
+          {(deck.suggestedCount ?? 0) > 0 && <Status deck={deck} compact />}
+        </span>
+      </Link>
+      <Link href={`/d/${deck.id}/present`} className="absolute right-2.5 top-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-[rgba(16,17,20,.78)] px-3 text-[12px] font-medium text-white opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100" aria-label={`Present ${deck.title}`}>
+        <Play size={12} fill="currentColor" aria-hidden="true" />
+        Present
+      </Link>
+    </li>
+  );
+}
+
+function RecentDecks({ decks }: { decks: DeckSummary[] }) {
   const [first, ...rest] = decks;
   return (
-    <section aria-labelledby="cont-h">
-      <div className="mb-3.5 flex items-baseline justify-between gap-3">
-        <h2 id="cont-h" className="text-[17px] font-semibold tracking-[-0.01em]">Continue where you left off</h2>
-        <Link href="/decks" className="text-[13px] font-medium text-accent hover:underline">All decks ({decks.length})</Link>
+    <section aria-labelledby="cont-h" className="space-y-8">
+      <div>
+        <SectionHead id="cont-h" title="Pick up where you left off" href="/decks" link={`All decks (${decks.length})`} />
+        <ContinueCard deck={first} />
       </div>
-      <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
-        <article className="grid gap-5 rounded-[14px] border border-line bg-surface p-4 sm:grid-cols-[1.1fr_1fr]" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
-          <Link href={`/d/${first.id}`} aria-label={`Open ${first.title}`}>
-            <Thumb deck={first} play={hover} />
-          </Link>
-          <div className="flex min-w-0 flex-col gap-2 py-1">
-            <Status deck={first} />
-            <h3 className="text-[18px] font-semibold leading-[1.25] tracking-[-0.01em]">{first.title}</h3>
-            <p className="text-[13px] text-ink-2">{first.slideCount} slides · edited {relTime(first.updatedAt)} · {getTheme(first.themeId).name}</p>
-            <div className="mt-auto flex flex-wrap gap-2 pt-2">
-              <Link href={`/d/${first.id}`} className="btn btn-primary btn-sm">Open editor</Link>
-              <Link href={`/d/${first.id}/present`} className="btn btn-secondary btn-sm">Present</Link>
-              <Link href={`/d/${first.id}?export=1`} className="btn btn-secondary btn-sm">Download</Link>
-            </div>
-          </div>
-        </article>
-        {rest.length > 0 ? (
-          <ul className="flex flex-col gap-1">
-            {rest.slice(0, 3).map((d) => (
-              <li key={d.id}>
-                <Link href={`/d/${d.id}`} className="grid grid-cols-[112px_1fr] items-center gap-3.5 rounded-[10px] border border-transparent p-2 hover:border-line hover:bg-surface">
-                  <Thumb deck={d} />
-                  <span className="min-w-0">
-                    <span className="block truncate text-[14px] font-semibold">{d.title}</span>
-                    <span className="block text-[12px] text-ink-2">{d.slideCount} slides · {relTime(d.updatedAt)}</span>
-                    {(d.suggestedCount ?? 0) > 0 && <span className="block text-[12px] text-warning">{d.suggestedCount} to check</span>}
-                  </span>
-                </Link>
-              </li>
-            ))}
+      {rest.length > 0 && (
+        <div>
+          <SectionHead id="recent-h" title="Recent decks" />
+          <ul className="grid grid-cols-2 gap-x-5 gap-y-6 lg:grid-cols-4" aria-labelledby="recent-h">
+            {rest.slice(0, 8).map((d) => <DeckCard key={d.id} deck={d} />)}
           </ul>
-        ) : (
-          <Tips compact />
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }
 
-function Tips({ compact = false }: { compact?: boolean }) {
+/** Two shortcuts to the other ways in. Shown under the deck list. */
+function Shortcuts() {
+  const items = [
+    { href: "/dashboard?mode=redesign", icon: RefreshCw, t: "Redesign an old deck", d: "Upload a .pptx. Compare each slide with its redesign and keep the one you like." },
+    { href: "/brand", icon: Palette, t: "Set up your brand kit", d: "Logo, colours and heading font, applied to new decks and PowerPoint downloads." },
+    { href: "/assets", icon: Images, t: "Add your own photos", d: "Upload team, product or event photos once and place them on any slide." },
+  ];
   return (
-    <aside className={`grid gap-4 ${compact ? "" : "sm:grid-cols-2"}`} aria-label="Tips">
-      <div className="rounded-[14px] border border-line bg-surface p-4">
-        <h3 className="text-[14px] font-semibold">Have an old deck?</h3>
-        <p className="mt-1 text-[13px] leading-[19px] text-ink-2">Use &ldquo;Redesign a deck&rdquo; above. Upload a .pptx and get it back with one clear point per slide, keeping your numbers and photos.</p>
-      </div>
-      <div className="rounded-[14px] border border-line bg-surface p-4">
-        <h3 className="text-[14px] font-semibold">Your photos, on your slides</h3>
-        <p className="mt-1 text-[13px] leading-[19px] text-ink-2">Upload team, product or event photos once. Kinetic places them on slides that suit them, and you can swap any photo in the editor.</p>
-        <Link href="/assets" className="btn btn-secondary btn-sm mt-3">Open photo library</Link>
-      </div>
-    </aside>
+    <ul className="grid gap-3 md:grid-cols-3" aria-label="Shortcuts">
+      {items.map(({ href, icon: Icon, t, d }) => (
+        <li key={t}>
+          <Link href={href} className="group flex h-full gap-3.5 rounded-[14px] border border-line bg-surface p-4 transition-colors hover:border-ink-2">
+            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-ink" aria-hidden="true"><Icon size={17} strokeWidth={1.75} /></span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-1 text-[14px] font-semibold">{t}<ArrowRight size={14} className="text-ink-2 transition-transform group-hover:translate-x-0.5" aria-hidden="true" /></span>
+              <span className="mt-0.5 block text-[12.5px] leading-[18px] text-ink-2">{d}</span>
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-/** Latest visits on the user's share links (docs/09 ?4.3). Hidden until something was shared. */
+/** Latest visits on the user's share links (docs/09 §4.3). Hidden until something was shared. */
 function Activity() {
   const backend = useBackend();
   const [links, setLinks] = useState<ShareLink[] | null>(null);
@@ -437,27 +506,31 @@ function Activity() {
     .slice(0, 5);
   return (
     <section aria-labelledby="act-h">
-      <div className="mb-3.5 flex items-baseline justify-between gap-3">
-        <h2 id="act-h" className="text-[17px] font-semibold tracking-[-0.01em]">Activity on your shared decks</h2>
-        <Link href="/shared" className="text-[13px] font-medium text-accent hover:underline">All analytics</Link>
-      </div>
+      <SectionHead id="act-h" title="Activity on your shared decks" href="/shared" link="All analytics" />
       {visits.length === 0 ? (
         <p className="rounded-[14px] border border-dashed border-line px-5 py-6 text-[14px] text-ink-2">Nobody has opened your links yet. When they do, you&rsquo;ll see it here.</p>
       ) : (
-        <ul className="divide-y divide-line rounded-[14px] border border-line bg-surface">
+        <ul className="divide-y divide-line overflow-hidden rounded-[14px] border border-line bg-surface">
           {visits.map((v, i) => {
             const per = v.l.perSlideMs ?? [];
             const top = per.length ? per.indexOf(Math.max(...per)) : -1;
+            const pct = v.l.slideCount ? Math.round((v.slidesSeen / v.l.slideCount) * 100) : 0;
             return (
-              <li key={i} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-[14px]">
-                <span>
-                  <b className="font-semibold">{v.email ?? (v.l.name ? `Someone from ${v.l.name}` : "Someone")}</b> opened <b className="font-semibold">{v.l.deckTitle}</b>
+              <li key={i} className="flex items-center gap-4 px-4 py-3 text-[14px]">
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-accent" aria-hidden="true"><Eye size={15} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">
+                    <b className="font-semibold">{v.email ?? (v.l.name ? `Someone from ${v.l.name}` : "Someone")}</b> opened <b className="font-semibold">{v.l.deckTitle}</b>
+                  </span>
+                  <span className="tabular block text-[12px] text-ink-2">
+                    {v.slidesSeen} of {v.l.slideCount} slides · {fmtDuration(v.totalMs)}
+                    {top >= 0 && per[top] > 0 ? ` · most time on slide ${top + 1}` : ""}
+                  </span>
                 </span>
-                <span className="tabular text-[12px] text-ink-2">
-                  {v.slidesSeen} of {v.l.slideCount} slides ? {fmtDuration(v.totalMs)}
-                  {top >= 0 && per[top] > 0 ? ` ? most time overall on slide ${top + 1}` : ""}
+                <span className="hidden w-24 sm:block" aria-hidden="true">
+                  <span className="block h-1.5 overflow-hidden rounded-full bg-line"><span className="block h-full rounded-full bg-accent" style={{ width: `${pct}%` }} /></span>
                 </span>
-                <span className="ml-auto text-[12px] text-ink-2">{relTimeShare(v.at)}</span>
+                <span className="w-16 flex-none text-right text-[12px] text-ink-2">{relTimeShare(v.at)}</span>
               </li>
             );
           })}
@@ -469,38 +542,50 @@ function Activity() {
 
 function FirstVisit({ onSample, busy }: { onSample: () => void; busy: boolean }) {
   const sample = useMemo(() => templateDeck("ledgerly-seed")!, []);
+  const [hover, setHover] = useState(false);
   const steps = [
-    { done: true, t: "Create your account", d: "Done. Your decks are private until you share or download them." },
-    { done: false, t: "Make your first deck", d: "Describe it above or drop a PDF, Word or PowerPoint file. About two minutes." },
-    { done: false, t: "Download or present it", d: "Editable PowerPoint with animations, a PDF, or present right in the browser." },
+    { done: true, t: "Create your account", d: "Your decks are private until you share or download them." },
+    { done: false, t: "Make your first deck", d: "Describe it above or drop a PDF, Word or PowerPoint file." },
+    { done: false, t: "Download or present it", d: "Editable PowerPoint with animations, a PDF, or the browser." },
   ];
   return (
-    <>
-      <ol className="grid gap-3 md:grid-cols-3" aria-label="Getting started">
-        {steps.map((s, i) => (
-          <li key={s.t} className="flex gap-3 rounded-[10px] border border-line bg-surface px-4 py-3.5">
-            <span className={`flex h-6 w-6 flex-none items-center justify-center rounded-full text-[12px] font-semibold ${s.done ? "bg-success text-white" : "border border-line"}`} aria-hidden="true">{s.done ? <Check size={14} strokeWidth={3} /> : i + 1}</span>
-            <span>
-              <span className="block text-[14px] font-semibold">{s.t}<span className="sr-only">{s.done ? " (done)" : ""}</span></span>
-              <span className="mt-0.5 block text-[12px] leading-[17px] text-ink-2">{s.d}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-      <section className="grid items-center gap-6 rounded-[14px] border border-dashed border-line p-5 md:grid-cols-[1.2fr_1fr]" aria-labelledby="sample-h">
-        <div className="overflow-hidden rounded-[10px] border border-line">
-          <SlideView slide={sample.slides[4]} theme={deckTheme(sample)} intensity="standard" mode="play" step={9} label="Slide from the sample deck" />
+    <section className="grid gap-5 lg:grid-cols-[1fr_1.2fr]" aria-labelledby="start-h">
+      <div className="rounded-[18px] border border-line bg-surface p-6">
+        <div className="flex items-baseline justify-between">
+          <h2 id="start-h" className="text-[16px] font-semibold tracking-[-0.01em]">Getting started</h2>
+          <span className="tabular text-[12px] text-ink-2">1 of 3 done</span>
         </div>
-        <div>
-          <h2 id="sample-h" className="text-[17px] font-semibold">No decks yet</h2>
-          <p className="mt-1 text-[14px] leading-[21px] text-ink-2">Open the sample to see how slides build, how AI edits are shown before you accept them, and what the PowerPoint download looks like. It&rsquo;s a {sample.slides.length}-slide pitch for a fictional company.</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className="btn btn-primary btn-sm" onClick={onSample} disabled={busy}>{busy ? "Opening" : "Open the sample deck"}</button>
-            <Link href="/templates" className="btn btn-secondary btn-sm">Browse {TEMPLATES.length} templates</Link>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden="true"><div className="h-full w-1/3 rounded-full bg-success" /></div>
+        <ol className="mt-5 space-y-4">
+          {steps.map((s, i) => (
+            <li key={s.t} className="flex gap-3">
+              <span className={`flex h-6 w-6 flex-none items-center justify-center rounded-full text-[12px] font-semibold ${s.done ? "bg-success text-white" : "border border-line text-ink-2"}`} aria-hidden="true">{s.done ? <Check size={13} strokeWidth={3} /> : i + 1}</span>
+              <span>
+                <span className={`block text-[14px] font-semibold ${s.done ? "text-ink-2 line-through decoration-[1.5px]" : ""}`}>{s.t}<span className="sr-only">{s.done ? " (done)" : ""}</span></span>
+                <span className="mt-0.5 block text-[12.5px] leading-[18px] text-ink-2">{s.d}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="group overflow-hidden rounded-[18px] border border-line bg-surface" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+        <div className="bg-[color-mix(in_srgb,var(--ink)_4%,var(--canvas))] p-5">
+          <div className="overflow-hidden rounded-[10px] shadow-[0_1px_2px_rgba(16,17,20,.08),0_12px_28px_-14px_rgba(16,17,20,.3)]">
+            <SlideView slide={sample.slides[4]} theme={deckTheme(sample)} intensity="standard" mode={hover ? "play" : "static"} step={9} playKey={hover ? "on" : "off"} label="Slide from the sample deck" />
           </div>
         </div>
-      </section>
-    </>
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-semibold">Try the sample deck</h3>
+            <p className="mt-0.5 text-[13px] text-ink-2">A {sample.slides.length}-slide pitch for a fictional company. Hover to watch it build.</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-primary btn-sm" onClick={onSample} disabled={busy}>{busy ? "Opening" : "Open the sample"}</button>
+            <Link href="/templates" className="btn btn-secondary btn-sm">Templates</Link>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -510,37 +595,39 @@ function TemplateRow({ onUse, busy }: { onUse: (id: string) => void; busy: strin
   const list = useMemo(() => TEMPLATES.filter((t) => cat === "all" || t.category === cat).slice(0, 4), [cat]);
   return (
     <section aria-labelledby="tpl-h">
-      <div className="mb-3.5 flex items-baseline justify-between gap-3">
-        <h2 id="tpl-h" className="text-[17px] font-semibold tracking-[-0.01em]">Start from a template</h2>
-        <Link href="/templates" className="text-[13px] font-medium text-accent hover:underline">All {TEMPLATES.length} templates</Link>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 id="tpl-h" className="text-[16px] font-semibold tracking-[-0.01em]">Start from a template</h2>
+        <div className="flex items-center gap-3">
+          <div role="tablist" aria-label="Template type" className="flex gap-0.5 overflow-x-auto rounded-[10px] bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] p-0.5">
+            {(["all", ...CATEGORIES] as const).map((c) => (
+              <button key={c} type="button" role="tab" aria-selected={cat === c} onClick={() => setCat(c)} className={`h-7 flex-none whitespace-nowrap rounded-[8px] px-2.5 text-[12px] font-medium transition-colors ${cat === c ? "bg-surface text-ink shadow-[0_1px_2px_rgba(16,17,20,.1)]" : "text-ink-2 hover:text-ink"}`}>
+                {c === "all" ? "All" : CATEGORY_LABEL[c]}
+              </button>
+            ))}
+          </div>
+          <Link href="/templates" className="hidden items-center gap-1 text-[13px] font-medium text-ink-2 hover:text-ink sm:inline-flex">All {TEMPLATES.length}<ArrowRight size={14} aria-hidden="true" /></Link>
+        </div>
       </div>
-      <div role="tablist" aria-label="Template type" className="mb-4 flex gap-1.5 overflow-x-auto">
-        {(["all", ...CATEGORIES] as const).map((c) => (
-          <button key={c} type="button" role="tab" aria-selected={cat === c} onClick={() => setCat(c)} className={`h-[30px] flex-none whitespace-nowrap rounded-full border px-3 text-[12px] font-medium ${cat === c ? "border-ink bg-ink text-canvas" : "border-line bg-surface text-ink-2 hover:text-ink"}`}>
-            {c === "all" ? "All" : CATEGORY_LABEL[c]}
-          </button>
-        ))}
-      </div>
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-x-5 gap-y-6 lg:grid-cols-4">
         {list.map((t) => {
           const deck = templateDeck(t.id)!;
           const show = deck.slides[t.highlights?.[0] ?? 0] ?? deck.slides[0];
           const on = hover === t.id;
           return (
-            <li key={t.id} className="overflow-hidden rounded-[10px] border border-line bg-surface" onMouseEnter={() => setHover(t.id)} onMouseLeave={() => setHover(null)}>
-              <Link href={`/t/${t.id}`} className="block" aria-label={`Preview ${t.name}`}>
-                <SlideView slide={show} theme={withBrand(getTheme(t.themeId), t.brand)} intensity={t.intensity} mode={on ? "play" : "static"} step={9} playKey={on ? "on" : "off"} />
-              </Link>
-              <div className="border-t border-line p-3">
-                <p className="truncate text-[13px] font-semibold">{t.name}</p>
-                <p className="truncate text-[12px] text-ink-2">{CATEGORY_LABEL[t.category]} · {deck.slides.length} slides</p>
-                <div className="mt-2.5 flex gap-1.5">
-                  <Link href={`/new?look=${t.id}`} className="btn btn-secondary btn-sm min-h-[30px] flex-1 px-2 text-[12px]">Use design</Link>
-                  <button type="button" className="btn btn-ghost btn-sm min-h-[30px] flex-1 px-2 text-[12px]" disabled={!!busy} onClick={() => onUse(t.id)}>
+            <li key={t.id} className="group" onMouseEnter={() => setHover(t.id)} onMouseLeave={() => setHover(null)}>
+              <div className="relative overflow-hidden rounded-[12px] border border-line shadow-[0_1px_2px_rgba(16,17,20,.05)] transition-shadow group-hover:shadow-[0_12px_28px_-12px_rgba(16,17,20,.28)]">
+                <Link href={`/t/${t.id}`} className="block" aria-label={`Preview ${t.name}`}>
+                  <SlideView slide={show} theme={withBrand(getTheme(t.themeId), t.brand)} intensity={t.intensity} mode={on ? "play" : "static"} step={9} playKey={on ? "on" : "off"} />
+                </Link>
+                <div className="absolute inset-x-2 bottom-2 flex gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <Link href={`/new?look=${t.id}`} className="btn btn-sm min-h-8 flex-1 bg-surface px-2 text-[12px] text-ink shadow-[0_2px_8px_rgba(0,0,0,.18)]">Use design</Link>
+                  <button type="button" className="btn btn-primary btn-sm min-h-8 flex-1 px-2 text-[12px] shadow-[0_2px_8px_rgba(0,0,0,.18)]" disabled={!!busy} onClick={() => onUse(t.id)}>
                     {busy === t.id ? "Copying" : "Copy deck"}
                   </button>
                 </div>
               </div>
+              <p className="mt-2.5 truncate px-0.5 text-[14px] font-semibold">{t.name}</p>
+              <p className="truncate px-0.5 text-[12px] text-ink-2">{CATEGORY_LABEL[t.category]} · {deck.slides.length} slides</p>
             </li>
           );
         })}
@@ -549,7 +636,23 @@ function TemplateRow({ onUse, busy }: { onUse: (id: string) => void; busy: strin
   );
 }
 
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
+  return (
+    <div className="min-w-[88px] px-4 first:pl-0">
+      <dt className="text-[12px] text-ink-2">{label}</dt>
+      <dd className={`tabular text-[20px] font-semibold tracking-[-0.02em] ${tone === "warning" ? "text-warning" : ""}`}>{value}</dd>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
+
+const noSubscribe = () => () => {};
+function clientClock() {
+  const now = new Date();
+  const h = now.getHours();
+  return `${h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"}|${now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}`;
+}
 
 function DashboardInner() {
   const backend = useBackend();
@@ -576,22 +679,31 @@ function DashboardInner() {
     };
   }, [backend, reload]);
 
-  async function copyTemplate(id: string) {
-    setBusy(id);
+  async function create(deck: Deck, key: string, fail: string) {
+    setBusy(key);
     setError(null);
     try {
-      const deck = await backend.createDeck(forkDeck(templateDeck(id)!));
-      router.push(`/d/${deck.id}`);
+      const saved = await backend.createDeck(deck);
+      router.push(`/d/${saved.id}`);
     } catch (e) {
-      setError({ text: e instanceof ApiError ? e.message : "Could not copy the template.", upgrade: e instanceof ApiError && e.status === 402 });
+      setError({ text: e instanceof ApiError ? e.message : fail, upgrade: e instanceof ApiError && e.status === 402 });
       setBusy(null);
     }
   }
+  const copyTemplate = (id: string) => create(forkDeck(templateDeck(id)!), id, "Could not copy the template.");
+  const blank = () =>
+    create(
+      { id: newId("dk"), version: 0, title: "Untitled deck", themeId: "mono", aspect: "16:9", motionIntensity: "standard", language: "en", slides: [NEW_SLIDES[0].make(), NEW_SLIDES[1].make()] },
+      "blank",
+      "Could not create the deck.",
+    );
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  // Time-of-day text is client-only so server and client HTML match.
+  const clock = useSyncExternalStore(noSubscribe, clientClock, () => "");
+  const [greeting, today] = clock ? clock.split("|") : ["Welcome back", " "];
   const firstVisit = decks !== null && decks.length === 0;
   const toCheck = (decks ?? []).filter((d) => (d.suggestedCount ?? 0) > 0).length;
+  const slidesTotal = (decks ?? []).reduce((n, d) => n + d.slideCount, 0);
   const atLimit = me?.plan === "free" && me.deckCount >= 3;
 
   const subline =
@@ -599,35 +711,58 @@ function DashboardInner() {
       ? " "
       : firstVisit
         ? "Make your first deck in about two minutes. Start with a sentence, your notes, or a file."
-        : `${decks.length} deck${decks.length === 1 ? "" : "s"}${toCheck ? `, ${toCheck} with suggested items to check` : ""}. Last edited ${relTime(decks[0].updatedAt)}.`;
+        : toCheck
+          ? `${toCheck} deck${toCheck === 1 ? " has" : "s have"} suggested items to check. Last edit ${relTime(decks[0].updatedAt)}.`
+          : `Everything is ready to present. Last edit ${relTime(decks[0].updatedAt)}.`;
 
   return (
-    <main className="mx-auto flex max-w-[1120px] flex-col gap-9 px-4 py-7 sm:px-10">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.02em]">{greeting}</h1>
-          <p className="mt-1 min-h-[21px] text-[14px] text-ink-2">{subline}</p>
+    <main className="mx-auto flex max-w-[1180px] flex-col gap-12 px-4 pb-16 pt-8 sm:px-10">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-2">{today}</p>
+            <h1 className="mt-1 text-[30px] font-semibold leading-[1.15] tracking-[-0.025em]">{greeting}</h1>
+            <p className="mt-1.5 min-h-[21px] text-[14px] text-ink-2">{subline}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {decks && decks.length > 0 && (
+              <dl className="mr-3 hidden divide-x divide-line md:flex" aria-label="Your workspace">
+                <Stat label="Decks" value={String(decks.length)} />
+                <Stat label="Slides" value={slidesTotal.toLocaleString()} />
+                {toCheck > 0 && <Stat label="To check" value={String(toCheck)} tone="warning" />}
+                {assets && assets.length > 0 && <Stat label="Photos" value={String(assets.length)} />}
+              </dl>
+            )}
+            <button type="button" className="btn btn-secondary btn-sm gap-1.5" onClick={blank} disabled={!!busy}>
+              <FilePlus2 size={15} aria-hidden="true" />
+              {busy === "blank" ? "Creating" : "Blank deck"}
+            </button>
+          </div>
         </div>
-        {me && !me.features.gemini && <p className="rounded-[8px] border border-line px-3 py-1.5 text-[12px] text-ink-2">AI is in offline mode: outlines use your own text only.</p>}
+
+        {me && !me.features.gemini && (
+          <p className="flex items-center gap-2 text-[12px] text-ink-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+            AI is in offline mode: outlines use your own text only.
+          </p>
+        )}
+        {error && (error.upgrade ? <UpgradeNote message={error.text} /> : <ErrorNote onRetry={() => setReload((r) => r + 1)}>{error.text}</ErrorNote>)}
+        {atLimit && <UpgradeNote message="You've used 3 of 3 decks on the Free plan. Your decks stay editable; upgrade to create more." />}
+
+        <CreateBox />
       </div>
 
-      {error && (error.upgrade ? <UpgradeNote message={error.text} /> : <ErrorNote onRetry={() => setReload((r) => r + 1)}>{error.text}</ErrorNote>)}
-      {atLimit && <UpgradeNote message="You've used 3 of 3 decks on the Free plan. Your decks stay editable; upgrade to create more." />}
-
-      <CreateBox />
-
       {decks === null && !error ? (
-        <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]" aria-busy="true">
-          <div className="skeleton h-[220px] rounded-[14px]" />
+        <div className="grid gap-5 md:grid-cols-[1.25fr_1fr]" aria-busy="true">
+          <div className="skeleton aspect-video rounded-[18px]" />
           <div className="flex flex-col gap-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-[64px]" />)}</div>
         </div>
       ) : firstVisit ? (
         <FirstVisit onSample={() => copyTemplate("ledgerly-seed")} busy={busy === "ledgerly-seed"} />
       ) : decks && decks.length > 0 ? (
         <>
-          <Continue decks={decks} />
+          <RecentDecks decks={decks} />
           <Activity />
-          {decks.length > 1 && <Tips />}
         </>
       ) : null}
 
@@ -635,17 +770,16 @@ function DashboardInner() {
 
       {assets && assets.length > 0 && (
         <section aria-labelledby="photos-h">
-          <div className="mb-3.5 flex items-baseline justify-between gap-3">
-            <h2 id="photos-h" className="text-[17px] font-semibold tracking-[-0.01em]">Your photos <span className="tabular text-[13px] font-normal text-ink-2">{assets.length} · {formatBytes(assets.reduce((n, a) => n + a.bytes, 0))}</span></h2>
-            <Link href="/assets" className="text-[13px] font-medium text-accent hover:underline">Manage photos</Link>
-          </div>
+          <SectionHead id="photos-h" title="Your photos" count={`${assets.length} · ${formatBytes(assets.reduce((n, a) => n + a.bytes, 0))}`} href="/assets" link="Manage photos" />
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-8">
             {assets.slice(0, 8).map((a) => (
-              <li key={a.id}><AssetThumb id={a.id} alt={a.alt} className="aspect-[4/3] w-full rounded-[8px]" /></li>
+              <li key={a.id}><AssetThumb id={a.id} alt={a.alt} className="aspect-[4/3] w-full rounded-[10px]" /></li>
             ))}
           </ul>
         </section>
       )}
+
+      {decks && decks.length > 0 && <Shortcuts />}
     </main>
   );
 }

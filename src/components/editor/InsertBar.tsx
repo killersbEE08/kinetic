@@ -28,7 +28,7 @@ function Menu({ label, icon, children, disabled, wide = false }: { label: string
   }, [open]);
   return (
     <div ref={ref} className="relative">
-      <button type="button" className="btn btn-ghost btn-sm gap-1.5 px-2.5" aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={() => setOpen((o) => !o)}>
+      <button type="button" className="btn btn-ghost btn-sm min-h-8 gap-1.5 px-2.5 text-[13px]" aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={() => setOpen((o) => !o)}>
         {icon}
         {label}
         <ChevronDown size={13} aria-hidden="true" className="text-ink-2" />
@@ -132,8 +132,9 @@ export function InsertBar({ onInsert, count, disabled }: { onInsert: (el: Elemen
   const [photo, setPhoto] = useState(false);
   const text = (p: TextPreset, label: string) => onInsert(newText(p, count), label);
   return (
-    <div className="flex flex-wrap items-center gap-0.5 rounded-[10px] border border-line bg-surface p-1" role="toolbar" aria-label="Insert">
-      <span className="px-2 text-[12px] font-medium text-ink-2">Insert</span>
+    <div className="flex flex-wrap items-center gap-0.5 rounded-[12px] border border-line bg-surface p-1 shadow-[0_1px_2px_rgba(16,17,20,.06),0_4px_12px_-4px_rgba(16,17,20,.08)]" role="toolbar" aria-label="Insert">
+      <span className="px-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">Insert</span>
+      <span className="mr-0.5 h-5 w-px bg-line" aria-hidden="true" />
       <Menu label="Text" icon={<Type size={15} aria-hidden="true" />} disabled={disabled}>
         {(close) => (
           <>
@@ -143,7 +144,7 @@ export function InsertBar({ onInsert, count, disabled }: { onInsert: (el: Elemen
           </>
         )}
       </Menu>
-      <button type="button" className="btn btn-ghost btn-sm gap-1.5 px-2.5" onClick={() => setPhoto(true)} disabled={disabled}>
+      <button type="button" className="btn btn-ghost btn-sm min-h-8 gap-1.5 px-2.5 text-[13px]" onClick={() => setPhoto(true)} disabled={disabled}>
         <ImageIcon size={15} aria-hidden="true" />
         Photo
       </button>
@@ -162,7 +163,7 @@ export function InsertBar({ onInsert, count, disabled }: { onInsert: (el: Elemen
       <Menu label="Icon" icon={<Smile size={15} aria-hidden="true" />} disabled={disabled} wide>
         {(close) => <IconPicker onPick={(n) => (close(), onInsert(newIcon(n, count), "Add icon"))} />}
       </Menu>
-      <button type="button" className="btn btn-ghost btn-sm gap-1.5 px-2.5" onClick={() => onInsert(newTable(4, 3, count), "Add table")} disabled={disabled}>
+      <button type="button" className="btn btn-ghost btn-sm min-h-8 gap-1.5 px-2.5 text-[13px]" onClick={() => onInsert(newTable(4, 3, count), "Add table")} disabled={disabled}>
         <Table2 size={15} aria-hidden="true" />
         Table
       </button>

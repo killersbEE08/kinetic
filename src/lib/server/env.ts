@@ -19,6 +19,8 @@ export const config = {
   dodoEnabled: () => !!(env("DODO_PAYMENTS_API_KEY") && env("DODO_PAYMENTS_WEBHOOK_KEY")),
   unsplashEnabled: () => !!env("UNSPLASH_ACCESS_KEY"),
   geminiModel: () => env("GEMINI_MODEL") ?? "gemini-3.8-flash",
+  /** Optional cheaper model for free-plan users (e.g. a Flash-Lite model). */
+  geminiFreeModel: () => env("GEMINI_MODEL_FREE"),
   appUrl: () => normalizeOrigin(env("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000"),
   /** Origins allowed to send session tokens. */
   authorizedParties: () => (env("CLERK_AUTHORIZED_PARTIES") ?? env("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000").split(",").map(normalizeOrigin).filter(Boolean),

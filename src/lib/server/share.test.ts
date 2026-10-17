@@ -21,6 +21,13 @@ describe("share links", () => {
     expect(await share.verifySessionToken("linkA", t.slice(0, -2) + "xx")).toBeNull();
     expect(await share.verifySessionToken("linkA", null)).toBeNull();
     expect(await share.verifySessionToken("linkA", "0.abc")).toBeNull();
+    expect(await share.verifySessionToken("linkA", "-1.abc")).toBeNull();
+  });
+
+  it("owner previews get session 0, which is valid but distinct from a real session", async () => {
+    const t = await share.sessionToken("linkA", 0);
+    expect(await share.verifySessionToken("linkA", t)).toBe(0);
+    expect(await share.verifySessionToken("linkB", t)).toBeNull();
   });
 
   it("hashes passwords with a salt and checks them", async () => {
@@ -44,5 +51,15 @@ describe("share links", () => {
     expect(share.linkLive({ revoked_at: new Date().toISOString(), expires_at: null })).toBe(false);
     expect(share.linkLive({ revoked_at: null, expires_at: new Date(Date.now() - 1000).toISOString() })).toBe(false);
     expect(share.deviceOf("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)")).toBe("phone");
+  });
+});
+
+
+describe("links to decks in Trash", () => {
+  it("reads deleted_at from the joined deck row, as object or array", () => {
+    expect(share.deckDeleted({ decks: { deleted_at: "2026-10-16T00:00:00Z" } })).toBe(true);
+    expect(share.deckDeleted({ decks: [{ deleted_at: "2026-10-16T00:00:00Z" }] })).toBe(true);
+    expect(share.deckDeleted({ decks: { deleted_at: null } })).toBe(false);
+    expect(share.deckDeleted(null)).toBe(false);
   });
 });

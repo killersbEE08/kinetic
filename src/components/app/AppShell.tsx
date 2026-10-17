@@ -6,12 +6,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { UserButton, useUser } from "@clerk/nextjs";
-import { Home, Images, LayoutTemplate, Link2, Palette, PanelLeftClose, PanelLeftOpen, Plus, Presentation, Search, Settings, Tag } from "lucide-react";
+import { Home, Images, LayoutTemplate, Link2, Palette, PanelLeftClose, PanelLeftOpen, Plus, Presentation, Search, Settings, Tag, Trash2 } from "lucide-react";
 import { useBackend } from "@/lib/client/backend";
 import { useMe } from "@/lib/client/me";
-import { MONTHLY_CREDITS } from "@/lib/billing/credits";
+import { creditNote, MONTHLY_CREDITS } from "@/lib/billing/credits";
 import { formatBytes } from "./assets-ui";
 import { CommandPalette } from "./CommandPalette";
+import { NotificationBell } from "./NotificationBell";
 
 const NAV = [
   { href: "/dashboard", label: "Home", icon: Home },
@@ -67,11 +68,13 @@ function UsageCard() {
     return <p className="rounded-[10px] border border-line bg-surface p-3 text-[12px] leading-[17px] text-ink-2">Demo mode: decks and photos are saved in this browser.</p>;
   }
   if (!me) return <div className="skeleton h-[118px] rounded-[10px]" aria-hidden="true" />;
-  const limit = MONTHLY_CREDITS[me.plan];
-  const used = me.creditsRemaining === null ? 0 : limit - me.creditsRemaining;
+  const limit = me.creditLimit ?? MONTHLY_CREDITS[me.plan];
+  const used = me.creditsRemaining === null ? 0 : Math.max(0, limit - me.creditsRemaining);
+  const note = creditNote(me.credits);
   return (
     <div className="rounded-[10px] border border-line bg-surface p-3" aria-label="Plan usage">
       {me.creditsRemaining !== null && me.features.gemini && <Meter label="AI credits used" value={used} max={limit} text={`${used.toLocaleString()} / ${limit.toLocaleString()}`} />}
+      {note && me.features.gemini && <p className="-mt-1 mb-2.5 text-[11px] leading-[15px] text-ink-2">{note}</p>}
       {me.plan === "free" ? <Meter label="Decks" value={me.deckCount} max={3} text={`${me.deckCount} / 3`} /> : me.storage && <Meter label="Photo storage" value={me.storage.usedBytes} max={me.storage.limitBytes} text={`${formatBytes(me.storage.usedBytes)} / ${formatBytes(me.storage.limitBytes)}`} />}
       <Link href="/pricing" className="btn btn-secondary btn-sm mt-0.5 w-full min-h-8">
         {me.plan === "free" ? "See Pro plan" : "Plan and usage"}
@@ -148,7 +151,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Desktop sidebar */}
         <aside className="sticky top-0 hidden h-dvh flex-col gap-1 border-r border-line bg-[color-mix(in_srgb,var(--ink)_3%,var(--canvas))] p-3 md:flex" aria-label="Main navigation">
           <div className={`flex items-center gap-2.5 px-1.5 py-1.5 ${collapsed ? "flex-col" : ""}`}>
-            <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5" aria-label="Kinetic home">
+            <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5" aria-label={collapsed ? "Kinetic home" : undefined}>
               <Mark />
               {!collapsed && (
                 <span className="min-w-0 leading-tight">
@@ -157,12 +160,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </span>
               )}
             </Link>
-            <button type="button" onClick={toggle} className={`${collapsed ? "" : "ml-auto"} rounded-[6px] p-1 text-ink-2 hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] hover:text-ink`} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            {!collapsed && <span className="ml-auto" />}
+            <NotificationBell />
+            <button type="button" onClick={toggle} className="rounded-[6px] p-1 text-ink-2 hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] hover:text-ink" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
               {collapsed ? <PanelLeftOpen size={16} aria-hidden="true" /> : <PanelLeftClose size={16} aria-hidden="true" />}
             </button>
           </div>
 
-          <button type="button" onClick={openPalette} className={`my-2 flex items-center gap-2 rounded-[10px] border border-line bg-surface px-2.5 py-[7px] text-left text-[13px] text-ink-2 hover:border-ink-2 ${collapsed ? "justify-center" : ""}`} aria-label="Search or jump to (Ctrl K)">
+          <button type="button" onClick={openPalette} className={`my-2 flex items-center gap-2 rounded-[10px] border border-line bg-surface px-2.5 py-[7px] text-left text-[13px] text-ink-2 hover:border-ink-2 ${collapsed ? "justify-center" : ""}`} aria-label={collapsed ? "Search or jump to (Ctrl K)" : undefined}>
             <Search size={15} aria-hidden="true" />
             {!collapsed && (
               <>
@@ -186,6 +191,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mt-auto flex flex-col gap-1">
             {!collapsed && <UsageCard />}
             <nav aria-label="Account" className="flex flex-col gap-0.5">
+              <NavLink href="/decks?view=trash" label="Trash" icon={Trash2} collapsed={collapsed} path={path} />
               <NavLink href="/pricing" label="Plans" icon={Tag} collapsed={collapsed} path={path} />
               <NavLink href="/settings" label="Settings" icon={Settings} collapsed={collapsed} path={path} />
             </nav>
@@ -198,6 +204,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/dashboard" aria-label="Kinetic home"><Mark size={26} /></Link>
           <span className="truncate text-[14px] font-semibold">{NAV.find((n) => isActive(path, n.href))?.label ?? (path.startsWith("/settings") ? "Settings" : "Kinetic")}</span>
           <button type="button" onClick={openPalette} className="btn btn-ghost btn-sm ml-auto px-2.5" aria-label="Search"><Search size={18} aria-hidden="true" /></button>
+          <NotificationBell align="right" />
           {backend.mode === "cloud" && <UserButton />}
         </header>
 

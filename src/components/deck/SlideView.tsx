@@ -8,6 +8,7 @@ import type { Theme } from "@/lib/deck/themes";
 import { useReducedMotion } from "@/lib/client/hooks";
 import { useAssetUrl } from "@/lib/client/assets";
 import { isAssetSrc, isUnsplashSrc, libraryUrl, unsplashUrl } from "@/lib/deck/media";
+import { backgroundImage, backgroundVars } from "@/lib/deck/slides";
 import { Icon } from "./Icon";
 import { Decor, Footer, Logo } from "./Brand";
 import { Mockup } from "./Mockup";
@@ -39,8 +40,12 @@ export interface SlideViewProps {
   morphNames?: boolean;
 }
 
-/** Scales a 1920×1080 stage to the width of its container. */
-export function SlideFrame({ children, className, label }: { children: (scale: number) => ReactNode; className?: string; label?: string }) {
+/**
+ * Scales a 1920×1080 stage to the width of its container. With a label it's announced as one
+ * image (or, when `editable`, as a group whose text boxes can be reached); without one it's a
+ * thumbnail inside a labelled button or link and is hidden from screen readers.
+ */
+export function SlideFrame({ children, className, label, editable }: { children: (scale: number) => ReactNode; className?: string; label?: string; editable?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
   useLayoutEffect(() => {
@@ -52,8 +57,9 @@ export function SlideFrame({ children, className, label }: { children: (scale: n
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  const a11y = label ? { role: editable ? "group" : "img", "aria-label": label } : { "aria-hidden": true as const };
   return (
-    <div ref={ref} className={"relative w-full overflow-hidden " + (className ?? "")} style={{ aspectRatio: "16 / 9" }} role="img" aria-label={label}>
+    <div ref={ref} className={"relative w-full overflow-hidden " + (className ?? "")} style={{ aspectRatio: "16 / 9" }} {...a11y}>
       {scale > 0 && children(scale)}
     </div>
   );
@@ -61,7 +67,7 @@ export function SlideFrame({ children, className, label }: { children: (scale: n
 
 export function SlideView(props: SlideViewProps) {
   return (
-    <SlideFrame className={props.className} label={props.label}>
+    <SlideFrame className={props.className} label={props.label} editable={props.editable}>
       {(scale) => <SlideStage {...props} scale={scale} />}
     </SlideFrame>
   );
@@ -83,12 +89,21 @@ export function SlideStage({ slide, theme, intensity, mode, step = 0, playKey, e
     "--k-hw": theme.headingWeight,
     "--k-track": theme.headingTracking,
     "--k-case": theme.headingCase,
+    ...backgroundVars(slide.background),
   } as CSSProperties;
+  const bgPhoto = backgroundImage(slide);
+  const dim = slide.background?.dim ?? 0.35;
 
   const ctx: RenderCtx = { slide, theme, timeline, mode, step, scale, editable: !!editable, showSuggested: !!showSuggested, selectedId: selectedId ?? null, onSelect, onEditText, onEditItem, onEditField, editingId: editingId ?? null, morph: !!morphNames };
 
   return (
     <div key={playKey} className={"k-stage" + (editable ? " k-editable" : "")} data-heading={theme.headingFont} style={style} onClick={editable ? () => onSelect?.(null) : undefined}>
+      {bgPhoto && (
+        <div className="absolute inset-0" data-slide-bg aria-hidden="true">
+          <Photo el={bgPhoto} run={false} scale={scale} frac={1} />
+          {dim > 0 && <div className="absolute inset-0" style={{ background: `rgba(6,8,12,${dim})` }} />}
+        </div>
+      )}
       <LayoutBody ctx={ctx} page={page} />
     </div>
   );

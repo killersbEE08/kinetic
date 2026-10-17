@@ -6,6 +6,7 @@ import { getTemplate, templateDeck } from "@/lib/deck/templates";
 import { deckTheme, getTheme, withBrand } from "@/lib/deck/themes";
 import { useReducedMotion } from "@/lib/client/hooks";
 import type { Slide } from "@/lib/deck/schema";
+import { Reveal } from "./motion";
 
 /**
  * A template slide. Plays its builds on hover/focus; with `auto`, it plays while on screen and
@@ -99,11 +100,11 @@ export function BrowserChrome({ url, dark = false, children }: { url: string; da
 
 export function SectionHead({ eyebrow, title, sub, center = true }: { eyebrow?: string; title: ReactNode; sub?: ReactNode; center?: boolean }) {
   return (
-    <div className={center ? "mx-auto max-w-[760px] text-center" : "max-w-[620px]"}>
+    <Reveal className={center ? "mx-auto max-w-[760px] text-center" : "max-w-[620px]"}>
       {eyebrow && <p className="m-eyebrow mb-4">{eyebrow}</p>}
       <h2 className="m-h2">{title}</h2>
       {sub && <p className="m-lead mt-4">{sub}</p>}
-    </div>
+    </Reveal>
   );
 }
 

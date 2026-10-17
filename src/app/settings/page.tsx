@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
 import { RequireUser } from "@/components/auth/RequireUser";
 import { AppShell } from "@/components/app/AppShell";
 import { formatBytes } from "@/components/app/assets-ui";
 import { ErrorNote } from "@/components/ui/chrome";
-import { ApiError, useBackend } from "@/lib/client/backend";
+import { ApiError, useBackend, type AlertSettings } from "@/lib/client/backend";
 import { useMe } from "@/lib/client/me";
-import { MONTHLY_CREDITS, CREDIT_COST } from "@/lib/billing/credits";
+import { creditNote, MONTHLY_CREDITS, CREDIT_COST } from "@/lib/billing/credits";
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
@@ -40,6 +40,91 @@ function CloudAccount() {
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => openUserProfile()}>Change name, email or password</button>
       </div>
     </>
+  );
+}
+
+/** How share-link alerts reach you: the bell always, plus email and a Slack channel. */
+function AlertsSettings() {
+  const backend = useBackend();
+  const [s, setS] = useState<AlertSettings | null>(null);
+  const [slackUrl, setSlackUrl] = useState("");
+  const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    backend
+      .getAlertSettings()
+      .then(setS)
+      .catch((e) => setMsg({ text: e instanceof ApiError ? e.message : "Alert settings couldn't be loaded.", error: true }));
+  }, [backend]);
+
+  const save = async (patch: { email?: boolean; slackUrl?: string | null }, done: string) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await backend.saveAlertSettings(patch);
+      setS(await backend.getAlertSettings());
+      setSlackUrl("");
+      setMsg({ text: done, error: false });
+    } catch (e) {
+      setMsg({ text: e instanceof ApiError ? e.message : "That didn't save. Try again.", error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!s) return msg ? <ErrorNote>{msg.text}</ErrorNote> : <div className="skeleton h-24" aria-busy="true" />;
+  return (
+    <div className="space-y-4 text-[14px]">
+      <p className="text-ink-2">The bell shows when someone opens a share link, a summary of how long they spent on each slide, and new comments. Turn alerts off for one link in its Share settings.</p>
+      <label className="flex items-start gap-3">
+        <input type="checkbox" className="mt-1 h-4 w-4" checked={s.email} disabled={busy || !s.emailAvailable} onChange={(e) => save({ email: e.target.checked }, e.target.checked ? "Email alerts are on." : "Email alerts are off.")} />
+        <span>
+          Email me view summaries and comments
+          {!s.emailAvailable && <span className="block text-[12px] text-ink-2">Email isn&rsquo;t set up on this server yet (RESEND_API_KEY and ALERT_EMAIL_FROM).</span>}
+        </span>
+      </label>
+      <div>
+        <span className="block font-medium">Slack</span>
+        {s.slack ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-ink-2">Posting to a channel (webhook ending {s.slackHint}).</span>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => save({ slackUrl: null }, "Slack alerts are off.")}>Remove</button>
+          </div>
+        ) : (
+          <form
+            className="mt-1 flex flex-wrap gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (slackUrl.trim()) void save({ slackUrl: slackUrl.trim() }, "Slack alerts are on.");
+            }}
+          >
+            <input className="field min-w-[260px] flex-1 text-[13px]" placeholder="https://hooks.slack.com/services/…" aria-label="Slack incoming webhook URL" value={slackUrl} onChange={(e) => setSlackUrl(e.target.value)} autoComplete="off" spellCheck={false} />
+            <button type="submit" className="btn btn-secondary btn-sm" disabled={busy || !slackUrl.trim()}>Connect</button>
+          </form>
+        )}
+        <p className="mt-1 text-[12px] text-ink-2">In Slack, add the &ldquo;Incoming Webhooks&rdquo; app to a channel and paste its URL here.</p>
+      </div>
+      {(s.slack || (s.email && s.emailAvailable)) && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={busy}
+          onClick={async () => {
+            setMsg(null);
+            try {
+              await backend.testAlert();
+              setMsg({ text: "Test alert sent. It can take a minute to arrive.", error: false });
+            } catch (e) {
+              setMsg({ text: e instanceof ApiError ? e.message : "The test alert couldn't be sent.", error: true });
+            }
+          }}
+        >
+          Send a test alert
+        </button>
+      )}
+      {msg && <p role={msg.error ? "alert" : "status"} className={`text-[13px] ${msg.error ? "text-danger" : "text-success"}`}>{msg.text}</p>}
+    </div>
   );
 }
 
@@ -114,7 +199,8 @@ function SettingsInner() {
         {me ? (
           <>
             <Row label="Plan"><span className="capitalize">{me.plan}</span>{me.planStatus === "cancelled" && me.currentPeriodEnd ? ` (ends ${new Date(me.currentPeriodEnd).toLocaleDateString()})` : ""}</Row>
-            {me.creditsRemaining !== null && <Row label="AI credits left this month"><span className="tabular">{me.creditsRemaining.toLocaleString()} of {MONTHLY_CREDITS[me.plan].toLocaleString()}</span></Row>}
+            {me.creditsRemaining !== null && <Row label="AI credits left this month"><span className="tabular">{me.creditsRemaining.toLocaleString()} of {(me.creditLimit ?? MONTHLY_CREDITS[me.plan]).toLocaleString()}</span></Row>}
+            {creditNote(me.credits) && <p className="text-[13px] text-ink-2">{creditNote(me.credits)}</p>}
             <Row label="Decks"><span className="tabular">{me.deckCount}{me.plan === "free" ? " of 3" : ""}</span></Row>
             {me.storage && <Row label="Photo storage"><span className="tabular">{formatBytes(me.storage.usedBytes)} of {formatBytes(me.storage.limitBytes)}</span></Row>}
             <p className="mt-3 text-[13px] text-ink-2">Costs: outline {CREDIT_COST.outline} credits, slides {CREDIT_COST.generatePerSlide} credit each (max {CREDIT_COST.generateMax} per deck), AI edit {CREDIT_COST.edit} credit. Credits refill on the 1st of each month.</p>
@@ -126,6 +212,14 @@ function SettingsInner() {
           <p className="text-[14px] text-ink-2">Demo mode has no plan. Decks and photos are saved in this browser, and AI uses the offline engine.</p>
         )}
       </Section>
+
+      {cloud && (
+        <div id="alerts" className="scroll-mt-6">
+          <Section id="alerts-h" title="Alerts">
+            <AlertsSettings />
+          </Section>
+        </div>
+      )}
 
       <Section id="data-h" title="Your data">
         <p className="text-[14px] leading-[21px] text-ink-2">

@@ -20,7 +20,7 @@ With no keys set, the app runs in **demo mode**. Decks are saved in your browser
 | Landing page | Built to the design brief: announcement bar, hero with a working prompt box, live demos (overview player, a real edit run by the edit engine, quality checks counted live), use cases, gallery, sample stories, guides, FAQ, footer |
 | Sample decks | 22 hand-written decks (6 pitches, 4 launches, 4 sales proposals, 4 lessons, 4 reports), each with its own brand kit (colour, logo mark, heading font, pattern), photos, drawn product screens, icon grids, charts with a highlighted number, timelines and team slides. Browse at `/templates`, preview at `/t/<id>`, then "Use this deck" to copy one. All companies and numbers are fictional |
 | Visual assets | 15 CC0 / public-domain photos in `public/media` (sources in `public/media/CREDITS.md`), Lucide icons (ISC licence), vector brand patterns drawn in code. Photos can be swapped from the Design panel |
-| New deck flow | Input → editable outline (reorder, merge, delete, layout hint, source chips) → style picker previewed with your content → slides stream in one by one |
+| New deck flow | Input → editable outline (reorder, merge, delete, layout hint, source chips) → style picker previewed with your content → slides stream in one by one. "Start editing now" opens the editor as soon as slide 1 is written; the rest keep arriving in the background, and slides you change are never overwritten |
 | Deck engine | Zod schema, 20 layouts, 6 themes (contrast-tested), 9 motion presets, build steps, count-up numbers, SVG bar/line/KPI charts |
 | Hand editing | Insert bar: text (heading, body, caption), photos (uploads or library), 8 shapes with text inside, 70 icons, tables, bar/line charts and big numbers. Click to select, click again to type, drag to move with snap guides, 8 resize handles, rotation handle (Shift for 15° steps), Shift-click or drag a box to select several, Ctrl A, move / align / space evenly / group (Ctrl G) several at once, arrow-key nudge, Delete, Ctrl D duplicate, Ctrl C / V between slides, undo. Format panel: exact position and size, align to slide, layer order, opacity, text size / bold / italic / underline / alignment / font / colour (theme colours follow theme changes), fill, border, corners, icon picker, table rows and columns, photo fit. Layout elements can be moved too ("Back to layout position" resets). Blank slides. Everything exports to PowerPoint as native, editable objects (shapes and tables included) |
 | Editor | Slide rail (drag to reorder, duplicate, delete), inline text editing, layout swap that keeps content, chart data editor, motion panel, speaker notes, unlimited undo/redo, autosave with conflict detection |
@@ -37,7 +37,11 @@ With no keys set, the app runs in **demo mode**. Decks are saved in your browser
 | App shell and dashboard | Left sidebar (collapses to icons, remembered), phone tab bar, Ctrl/? K search across decks, templates and actions. Dashboard: one create box with four ways to start (describe, paste notes, import files, redesign a .pptx) that writes the outline straight away, "continue where you left off" with a check-status line, first-visit checklist and sample, templates |
 | Settings | Account details, plan and credit usage, "Download my data" (ZIP of decks and photos), delete account (type DELETE; blocked while a paid plan is active) |
 | Safety | Per-user rate limits (Cloudflare rate-limit binding: AI 20/min, uploads 30/min), HSTS, a report-only content security policy, browser error reports to `/api/report` (no deck content), credit cost shown on every AI button |
-| Not built yet | Brand kit editor, share links, MP4 export, teams, text recognition for scanned PDFs |
+| Not built yet | Brand kit editor, MP4 export, shared team workspace and roles, @mentions, real-time co-editing, text recognition for scanned PDFs |
+| Review tab | One list of what to check before presenting: details not in your notes, too much text, low contrast, photos without alt text, hype wording, placeholder text, colours outside the brand, long titles, missing speaker notes. One-click fixes (one at a time or "all"), each one undoable. "Change the whole deck" runs one AI pass over every slide (e.g. "Shorten every title"); you untick slides to keep and apply the rest in one step |
+| Comments | Threads pinned to a slide (optionally an element), with replies and resolve. Share links can allow comments: viewers comment without an account, and the owner sees them in the editor with the link name ("via Acme investors") |
+| Share alerts | A bell in the app: "Acme investors opened your deck", then a summary when they leave ("viewed for 2m 10s, most time on slide 4, Pricing"), and new comments. Email (Resend) and a Slack channel are optional, set in Settings → Alerts. Turn alerts off per link |
+| Measurement | Activation funnel (sign-up → outline → deck → first edit → present / share / download), timings for generation, export and save, server errors as JSON log lines, optional Sentry. `/api/health` reports missing migrations |
 
 ## Connect the real services
 
@@ -78,6 +82,30 @@ Files are stored under `u/<clerk user id>/<photo id>` and served only through `/
 
 Share links hold a snapshot of the deck, so later edits don't show until you press "Update to latest". Viewers are counted with a hash that changes every day, and no IP addresses are stored. The redesign view (`/redesign`) draws the original .pptx in the browser with [@aiden0z/pptx-renderer](https://github.com/aiden0z/pptx-renderer) (Apache-2.0), loaded only on that page.
 
+### 7. Comments, alerts and measurement
+1. Run `supabase/migrations/20261017000000_versions_trash.sql` and `supabase/migrations/20261018000000_activity_comments_alerts.sql`. Open `/api/health`: it answers 200 when every migration is in, and lists what is missing otherwise.
+2. Optional email alerts: create a [Resend](https://resend.com) key and a verified sender, then set `RESEND_API_KEY` and `ALERT_EMAIL_FROM` (e.g. `Kinetic <alerts@yourdomain.com>`). Slack needs no server setup: each user pastes an incoming-webhook URL in Settings → Alerts.
+3. Optional error tracking: set `SENTRY_DSN`. Server errors and browser error reports are sent to Sentry; without it they are JSON lines in `wrangler tail` / Workers Observability (`server_error`, `client_error`, `slow_request`, `timing`, `migration_needed`).
+4. Activation: in the SQL editor, `select count(*) filter (where activated) * 100.0 / count(*) from activation_funnel where signed_up_at > now() - interval '30 days';`. The view has one row per user with the time of each step. Events hold names, ids and small numbers only, never deck text.
+
+### 8. Abuse reports and bot checks
+1. Run `supabase/migrations/20261019000000_abuse_reports.sql`.
+2. Anyone can report a shared deck (Report link on `/v/<id>`, or the `/report` page) or a comment. A reported comment is hidden from other viewers until the owner presses "Keep it" or deletes it. Deck reports are logged (`abuse_report`) and, with `ABUSE_REPORT_EMAIL` plus the Resend keys, emailed to you with a ready-made takedown line.
+3. To take a link down: `insert into blocked_links (link_id, reason) values ('<link id>', 'phishing');`. Viewers then see "This link was removed", photos stop loading and comments close. Delete the row to restore it. Open reports: `select * from abuse_reports where status = 'open' order by created_at desc;`.
+4. Optional bot check on viewer comments and reports: create a [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) widget and set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (build time) and `TURNSTILE_SECRET_KEY` (secret). Set both or neither. `NEXT_PUBLIC_ABUSE_EMAIL` shows a contact address for legal requests on `/report`.
+5. When the deck owner opens their own share link while signed in, the visit isn't counted and sends no alert (the viewer shows "Your link · views not counted").
+
+### 9. Free-tier abuse guard (throwaway accounts)
+Run `supabase/migrations/20261020000000_free_tier_guard.sql`. Then:
+- **Starter credits:** new free accounts get 40 AI credits (about one deck plus edits). The full 100 a month arrive after 48 hours, or as soon as they share a deck.
+- **Throwaway emails** (a built-in list plus `DISPOSABLE_EMAIL_DOMAINS`) get no free AI credits; the offline engine still works.
+- **Many accounts from one network** (more than 3 in 30 days) wait 6 days for the full allowance instead of 2. Only a keyed hash of the /24 network is kept, and it's cleared after 30 days.
+- **Daily cap for all free users together** (20,000 credits by default). When it's reached, free users get the offline engine until midnight UTC; paid users are never affected. You get a `free_cap_reached` log line and an email (`OPS_ALERT_EMAIL`), and a `free_cap_80` warning at 80%.
+- **Cheaper model for free users:** set `GEMINI_MODEL_FREE` (e.g. a Flash-Lite model).
+- **Check and tune** in the SQL editor: `select * from free_tier_watch;` and `update free_tier_config set daily_credit_cap = 30000, starter_credits = 40, unlock_hours = 48 where id = 1;`
+
+Set your daily cap from your budget: credits ≈ slides generated, and one credit costs you roughly one Gemini call's worth of tokens for a slide. Start low and raise it as real usage grows.
+
 ## Deploy to Cloudflare
 
 ```bash
@@ -88,6 +116,8 @@ pnpm exec wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 pnpm exec wrangler secret put GEMINI_API_KEY
 pnpm exec wrangler secret put UNSPLASH_ACCESS_KEY     # optional, stock photos
 pnpm exec wrangler secret put SHARE_SIGNING_SECRET    # optional
+pnpm exec wrangler secret put RESEND_API_KEY          # optional, email alerts (+ ALERT_EMAIL_FROM)
+pnpm exec wrangler secret put SENTRY_DSN              # optional, error tracking
 pnpm exec wrangler secret put DODO_PAYMENTS_API_KEY
 pnpm exec wrangler secret put DODO_PAYMENTS_WEBHOOK_KEY
 pnpm exec wrangler secret put DODO_PRODUCT_PRO
@@ -109,13 +139,26 @@ To test in the real Workers runtime locally, copy `.dev.vars.example` → `.dev.
 
 Without the Cloudflare token the deploy step is skipped. `gemini-contract.yml` checks every night that Gemini still accepts the app's JSON formats (`pnpm test:gemini` runs it locally).
 
+### Browser tests
+- `pnpm test:e2e`: builds the app in demo mode (keys blanked) on :3100 and runs Playwright: create from the sample memo, rename, whole-deck AI pass with one slide kept, comment and resolve, restore a version, download .pptx and .pdf (files checked), present, Trash and restore, activation events, plus axe accessibility checks (fails on serious or critical problems). Runs in CI on every push and pull request; deploy waits for it. `E2E_SKIP_BUILD=1` reuses the last build.
+- `pnpm test:e2e:cloud`: signed-in mode against a running app with real keys (`pnpm dev`, or `E2E_CLOUD_URL`). Needs `E2E_CLERK_USER_EMAIL`, an existing user in a Clerk development instance (`pk_test_` keys only). Adds share links with a password, a viewer comment from a signed-out browser, owner alerts, reload-from-server checks, and that Trash closes share links. It deletes its deck at the end. In CI it runs when the `E2E_CLOUD_URL` variable and the `E2E_CLERK_USER_EMAIL`, `E2E_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY` secrets are set.
+- Not automated: a screen-reader pass over the slide canvas (NVDA or VoiceOver: select, edit text, move between slides).
+
+### Migrations on deploy
+Set the `SUPABASE_DB_URL` secret (Supabase → Connect → Session pooler connection string). The deploy job runs `supabase db push` before deploying, then calls `/api/health` and fails if a migration is missing. If you ran earlier migrations by hand in the SQL editor, tell the CLI once so it doesn't run them again:
+
+```bash
+npx supabase@2.121.0 migration repair --db-url "$SUPABASE_DB_URL" --status applied 20261014000000 20261015000000 20261015120000 20261016000000 20261017000000
+```
+
 ## Scripts
 
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Next.js dev server |
 | `pnpm test:gemini` | Sends every AI response format to the configured Gemini model (needs `GEMINI_API_KEY`) |
-| `pnpm test` | Unit tests (deck schema, patches, scope rules, quality gates, webhook signatures, plan mapping) |
+| `pnpm test` | Unit tests (deck schema, patches, scope rules, quality gates, deck review, alerts, webhook signatures, plan mapping) |
+| `pnpm test:e2e` / `pnpm test:e2e:cloud` | Browser tests in demo mode / signed-in mode (see above) |
 | `pnpm lint` / `pnpm typecheck` | ESLint / TypeScript |
 | `pnpm slop-lint` | Fails on banned copy and visuals from docs/06 (hype words, exclamation marks, gradients, glassmorphism, idle animation, emoji) |
 | `pnpm run preview` | Build for Workers and run locally in workerd |
@@ -143,8 +186,9 @@ Design decisions worth knowing:
 - **Templates live in code** (`src/lib/deck/templates/`). A test requires every template to pass all quality gates with zero fixes, so add new ones the same way.
 
 ## Security notes
-- All API routes need a valid Clerk session token, except the Dodo webhook, which needs a valid signature less than 5 minutes old. Duplicate webhook deliveries are ignored.
-- The Supabase service role key is used only by the webhook. Everything else runs as the signed-in user, under RLS.
+- All API routes need a valid Clerk session token, except the Dodo webhook (signed), `/api/health`, `/api/report` and `/api/abuse` (rate-limited; abuse reports also pass Turnstile when configured), and the share-link viewer routes `/api/v/*`. Those use the service role and check the link id, expiry, password and a signed viewer token themselves; viewer comments also need the owner to have turned comments on for that link, and are capped at 300 per link.
+- Slack alert URLs must be `https://hooks.slack.com/services/…` (checked in the API and in the database), so a user can't make the server post to arbitrary addresses.
+- The Supabase service role key is used only by the webhook, account deletion, the share-link viewer routes, alerts and `/api/health`. Everything else runs as the signed-in user, under RLS.
 - Request bodies are size-limited and validated with Zod; error messages never include internal details.
 - Rate limits are per user (and per IP for `/api/report`), applied per Cloudflare location. Monthly AI budgets are enforced in Postgres.
 - The content security policy is report-only. Check `wrangler tail` for `csp_violation` lines for a week, then switch the header to `Content-Security-Policy` in `next.config.ts`.

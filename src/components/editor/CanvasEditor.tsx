@@ -364,7 +364,7 @@ export function CanvasEditor({
   useEffect(() => {
     if (!interactive) return;
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
+      const t = e.target instanceof HTMLElement ? e.target : null;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (t?.closest("dialog")) return;
       const mod = e.ctrlKey || e.metaKey;

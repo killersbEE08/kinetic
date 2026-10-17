@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
 import { saveDraftInput } from "@/lib/client/draft";
 import type { DeckType } from "@/lib/deck/schema";
-import { THEMES } from "@/lib/deck/themes";
+import { deckTheme, THEMES } from "@/lib/deck/themes";
+import { templateDeck } from "@/lib/deck/templates";
+import { SlideView } from "@/components/deck/SlideView";
+import { EASE, RiseWords, ScrollTilt } from "./motion";
 
 const TABS: { type: DeckType; label: string; example: string; glyph: string }[] = [
   { type: "pitch", label: "Pitch", example: "Seed pitch for a bookkeeping app for small shops. MRR $18k, 1,240 paying shops.", glyph: "M3 12h3V8H3zm4 0h3V5H7zm4 0h3V2h-3z" },
@@ -17,6 +21,7 @@ const TABS: { type: DeckType; label: string; example: string; glyph: string }[] 
 
 export function Hero() {
   const router = useRouter();
+  const reduce = useReducedMotion();
   const [tab, setTab] = useState(0);
   const [text, setText] = useState("");
   const current = TABS[tab];
@@ -28,20 +33,20 @@ export function Hero() {
   }
 
   return (
-    <section className="m-tex m-hero-bg relative pb-40 pt-20 md:pb-56 md:pt-28">
+    <section className="m-tex m-hero-bg relative pb-24 pt-20 md:pb-32 md:pt-28">
       <div className="m-frame flex flex-col items-center text-center">
         <p className="mb-5 inline-flex items-center gap-2 text-[13px] text-[#4b4f57]">
           <span className="inline-flex h-5 items-center rounded-[5px] bg-[var(--m-ink)] px-1.5 text-[11px] font-semibold text-white">Free</span>
           3 decks, no card needed
         </p>
         <h1 className="m-h1 max-w-[900px]">
-          Your notes, as a deck that <span className="m-accent">moves</span>
+          <RiseWords text="Your notes, as a deck that moves" accent="moves" />
         </h1>
-        <p className="m-lead mt-5 max-w-[620px] text-[18px]">
+        <motion.p className="m-lead mt-5 max-w-[620px] text-[18px]" initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE, delay: 0.25 }}>
           Paste a memo or a rough outline. Kinetic plans the story, builds animated slides from your own words, and lets you change them in plain language.
-        </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Link href="/new" className="m-pill m-pill-dark h-[52px] px-7 text-[16px]">Start a deck free</Link>
+        </motion.p>
+        <motion.div className="mt-8 flex flex-wrap items-center justify-center gap-3" initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE, delay: 0.35 }}>
+          <Link href="/new" className="m-pill m-pill-dark m-shine h-[52px] px-7 text-[16px]">Start a deck free</Link>
           <Link href="/templates" className="m-pill m-glass h-[52px] px-6 text-[16px]">
             Open a sample deck
             <span className="flex -space-x-1" aria-hidden="true">
@@ -50,9 +55,9 @@ export function Hero() {
               ))}
             </span>
           </Link>
-        </div>
+        </motion.div>
 
-        <form onSubmit={go} className="m-glass mt-14 w-full max-w-[760px] rounded-[18px] p-3 text-left" aria-label="Describe your deck">
+        <motion.form onSubmit={go} className="m-glass mt-14 w-full max-w-[760px] rounded-[18px] p-3 text-left" aria-label="Describe your deck" initial={reduce ? false : { opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.7, ease: EASE, delay: 0.45 }}>
           <div role="tablist" aria-label="Deck type" className="flex flex-wrap gap-1">
             {TABS.map((t, i) => (
               <button
@@ -89,8 +94,64 @@ export function Hero() {
             </button>
           </div>
           <p className="px-2 pt-2 text-[12px] text-[#5d616a]">Press Enter to see the outline first. Nothing is designed until you approve the story.</p>
-        </form>
+        </motion.form>
+
+        <ScrollTilt className="mt-16 w-full max-w-[1040px] md:mt-20">
+          <HeroPlayer />
+        </ScrollTilt>
       </div>
     </section>
+  );
+}
+
+const HERO_SLIDES = [0, 1, 4, 5, 6];
+
+/** The real product: a sample deck playing its builds in the editor frame. Pausable (WCAG 2.2.2). */
+function HeroPlayer() {
+  const reduce = useReducedMotion();
+  const deck = templateDeck("ledgerly-seed")!;
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.4 });
+  const [i, setI] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const live = inView && !paused && !reduce;
+  useEffect(() => {
+    if (!live) return;
+    const t = setTimeout(() => setI((n) => (n + 1) % HERO_SLIDES.length), 4200);
+    return () => clearTimeout(t);
+  }, [live, i]);
+  const idx = HERO_SLIDES[i];
+  return (
+    <div ref={ref} className="m-window overflow-hidden rounded-[18px] bg-white text-left">
+      <div className="flex h-11 items-center gap-3 border-b border-[var(--m-line)] px-4">
+        <span className="flex gap-1.5" aria-hidden="true">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+        </span>
+        <span className="m-mono truncate text-[11px] text-[var(--m-gray)]">Ledgerly seed pitch · slide {idx + 1} of {deck.slides.length}</span>
+        <button type="button" className="ml-auto rounded-full border border-[var(--m-line)] px-3 py-1 text-[12px] text-[var(--m-gray)] hover:text-[var(--m-ink)]" onClick={() => setPaused((v) => !v)} aria-pressed={paused}>
+          {paused ? "Play" : "Pause"}
+        </button>
+      </div>
+      <div className="grid md:grid-cols-[148px_1fr]">
+        <ol className="hidden space-y-2 border-r border-[var(--m-line)] bg-[var(--m-soft)] p-3 md:block" aria-label="Slides">
+          {HERO_SLIDES.map((s, k) => (
+            <li key={s}>
+              <button type="button" onClick={() => setI(k)} aria-label={`Show slide ${s + 1}`} aria-current={k === i ? "true" : undefined} className={`block w-full overflow-hidden rounded-[6px] border-2 transition-colors ${k === i ? "border-[var(--m-blue)]" : "border-transparent opacity-70 hover:opacity-100"}`}>
+                <SlideView slide={deck.slides[s]} theme={deckTheme(deck)} intensity="calm" mode="static" />
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="relative bg-[#eef0f3] p-4 sm:p-8">
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.div key={idx} className="overflow-hidden rounded-[8px] shadow-[0_20px_40px_-20px_rgba(16,17,20,0.35)]" initial={reduce ? false : { opacity: 0, scale: 0.97, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 1.02 }} transition={{ duration: 0.5, ease: EASE }}>
+              <SlideView slide={deck.slides[idx]} theme={deckTheme(deck)} intensity={deck.motionIntensity} mode={reduce ? "static" : "play"} step={9} playKey={`${idx}-${live ? 1 : 0}`} label={`Ledgerly sample deck, slide ${idx + 1}`} />
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
   );
 }
