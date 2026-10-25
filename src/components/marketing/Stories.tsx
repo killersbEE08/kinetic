@@ -113,8 +113,8 @@ export function Stories() {
 
 // ---------------- 13. FAQ ----------------
 const FAQ: [string, string][] = [
-  ["Does Kinetic make up numbers?", "No. Every number on a slide is checked against what you pasted. Anything that isn't in your material gets a dashed outline and a Suggested label until you change or accept it."],
-  ["Do you train AI on my notes?", "Kinetic doesn't train any models. With a Gemini key, your text is sent to Google's Gemini API only to write your deck."],
+  ["Does DeckIQ make up numbers?", "No. Every number on a slide is checked against what you pasted. Anything that isn't in your material gets a dashed outline and a Suggested label until you change or accept it."],
+  ["Do you train AI on my notes?", "DeckIQ doesn't train any models. With a Gemini key, your text is sent to Google's Gemini API only to write your deck."],
   ["What can I give it?", "A prompt, pasted notes (up to about 50,000 words), or files: PDF, Word, PowerPoint, Excel, CSV and text. Photos inside your files are kept and placed on slides."],
   ["Can I edit slides by hand?", "Yes. Click a box to select it and click again to type. Add text, photos, shapes, icons, tables and charts; move, resize, rotate, align and group them; change fonts and colours; undo anything."],
   ["Are the sample decks real companies?", "No. Every company, person and number in the samples is fictional. Use them to see the structure, then make them yours."],
@@ -196,7 +196,7 @@ export function Footer() {
             <span className="text-white">
               <Mark />
             </span>
-            Kinetic
+            DeckIQ
           </span>
           <p className="mt-4 max-w-[300px] text-[14px] leading-[1.6] text-white/55">Turns your notes into an animated deck you can edit and present. Every number on a slide comes from your material.</p>
           <p className="mt-6 text-[12px] text-white/60">{TEMPLATES.length} sample decks · 20 layouts · 6 themes</p>
@@ -215,11 +215,11 @@ export function Footer() {
         ))}
       </div>
       <div className="m-frame flex flex-wrap justify-between gap-4 border-t border-white/10 py-6 text-[12px] text-white/60">
-        <p>© {new Date().getFullYear()} Kinetic. Sample decks use fictional companies, people and numbers.</p>
+        <p>© {new Date().getFullYear()} DeckIQ. Sample decks use fictional companies, people and numbers.</p>
         <p><a href="/report" className="hover:text-white">Report a shared deck</a> · Built on Cloudflare Workers, Supabase and Gemini.</p>
       </div>
       <div className="m-frame -mb-[0.2em] pt-4" aria-hidden="true">
-        <p className="m-wordmark">Kinetic</p>
+        <p className="m-wordmark">DeckIQ</p>
       </div>
     </footer>
   );

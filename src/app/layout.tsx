@@ -12,10 +12,19 @@ const serif = Source_Serif_4({ variable: "--font-serif", subsets: ["latin"], dis
 const grotesk = Space_Grotesk({ variable: "--font-grotesk", subsets: ["latin"], display: "swap" });
 const display = Fraunces({ variable: "--font-display", subsets: ["latin"], display: "swap" });
 
+// Public address. Set NEXT_PUBLIC_APP_URL to https://deckiq.app in production.
+const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://deckiq.app").replace(/\/+$/, "");
+const description = "Paste your notes or a memo. DeckIQ builds an animated deck you can edit, present, and share.";
+
 export const metadata: Metadata = {
-  title: { default: "Kinetic: presentations that move", template: "%s · Kinetic" },
-  description: "Paste your notes or a memo. Kinetic builds an animated deck you can edit, present, and share.",
-  applicationName: "Kinetic",
+  metadataBase: new URL(siteUrl),
+  title: { default: "DeckIQ: presentations that move", template: "%s · DeckIQ" },
+  description,
+  applicationName: "DeckIQ",
+  alternates: { canonical: "/" },
+  openGraph: { type: "website", siteName: "DeckIQ", url: "/", title: "DeckIQ: presentations that move", description },
+  twitter: { card: "summary_large_image", title: "DeckIQ: presentations that move", description },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {

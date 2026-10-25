@@ -44,7 +44,7 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "style", label: "Style" },
   { id: "generating", label: "Generate" },
 ];
-const TYPE_LABEL: Record<DeckType, string> = { pitch: "Pitch", sales: "Sales", launch: "Product launch", lesson: "Lesson", report: "Report", custom: "Custom" };
+const TYPE_LABEL: Record<DeckType, string> = { pitch: "Pitch", sales: "Sales", launch: "Product launch", lesson: "Lesson", academic: "Academics", report: "Report", custom: "Custom" };
 
 
 function Stepper({ step }: { step: Step }) {
@@ -306,7 +306,7 @@ function NewDeckInner() {
             </span>
             <textarea
               className="field min-h-[220px] resize-y font-[450]"
-              placeholder="Paste a memo, an outline, meeting notes, or data. Leave a blank line between topics. Kinetic only uses facts from here."
+              placeholder="Paste a memo, an outline, meeting notes, or data. Leave a blank line between topics. DeckIQ only uses facts from here."
               value={input.notes}
               maxLength={400_000}
               onChange={(e) => setInput({ ...input, notes: e.target.value })}

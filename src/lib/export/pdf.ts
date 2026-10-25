@@ -26,7 +26,7 @@ export async function exportPdf(deck: Deck, opts: PdfOptions, onProgress?: (done
   const handout = opts.layout === "handout";
   // Slides: a 16:9 page in points (13.333 × 7.5 in). Handout: A4 portrait.
   const pdf = handout ? new jsPDF({ orientation: "p", unit: "pt", format: "a4", compress: true }) : new jsPDF({ orientation: "l", unit: "pt", format: [960, 540], compress: true });
-  pdf.setProperties({ title: deck.title, creator: "Kinetic" });
+  pdf.setProperties({ title: deck.title, creator: "DeckIQ" });
 
   await forEachRenderedSlide(
     deck,

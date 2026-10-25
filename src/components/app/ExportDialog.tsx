@@ -99,7 +99,7 @@ export function ExportDialog({ deck, slideIndex, open, onClose }: { deck: Deck; 
               <input type="checkbox" className="mt-1 h-4 w-4" checked={animations} onChange={(e) => setAnimations(e.target.checked)} />
               <span>
                 Animations and transitions
-                <span className="block text-[12px] text-ink-2">Builds play on click like in Kinetic. Morph needs PowerPoint 2019 or 365; older versions fade.</span>
+                <span className="block text-[12px] text-ink-2">Builds play on click like in DeckIQ. Morph needs PowerPoint 2019 or 365; older versions fade.</span>
               </span>
             </label>
             <label className="flex items-start gap-3">

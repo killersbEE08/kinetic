@@ -87,9 +87,29 @@ h3 {
   text-wrap: balance;
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* In the base layer so components that draw their own rounded focus ring (outline-none +
+   focus-within:ring) are not covered by a sharp rectangle. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* Native controls (select menus, scrollbars, date pickers) follow light/dark mode, so
+   dropdown options are readable on dark. */
+:root {
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+select option,
+select optgroup {
+  background-color: var(--surface);
+  color: var(--ink);
 }
 
 .tabular {

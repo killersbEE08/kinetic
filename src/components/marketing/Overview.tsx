@@ -22,6 +22,7 @@ const KINDS = [
   ["Quarterly review", "M2 13V7h3v6zm4.5 0V3h3v10zM11 13V9h3v4z"],
   ["Impact report", "M7.5 13s-5-3-5-7a2.5 2.5 0 0 1 5-1 2.5 2.5 0 0 1 5 1c0 4-5 7-5 7z"],
   ["Lesson", "M1 4l6.5-3L14 4l-6.5 3zm2 2v4c2 2 7 2 9 0V6"],
+  ["Thesis defence", "M2 2h8l3 3v8H2zM10 2v3h3M4.5 8h6M4.5 10.5h4"],
   ["Metrics review", "M2 12l3-4 3 2 5-7"],
   ["Customer proposal", "M3 2h9v11H3zM5 5h5M5 8h5M5 11h3"],
 ] as const;
@@ -30,10 +31,10 @@ export function ProofStrip() {
   const half = Math.ceil(TEMPLATES.length / 2);
   const rows = [TEMPLATES.slice(0, half), TEMPLATES.slice(half)];
   return (
-    <section className="border-b border-[var(--m-line)] bg-white py-20" aria-label="Sample decks made with Kinetic">
+    <section className="border-b border-[var(--m-line)] bg-white py-20" aria-label="Sample decks made with DeckIQ">
       <div className="m-frame">
         <Reveal>
-          <p className="m-small text-center">Built for the decks people present every week. Hover a slide to play it.</p>
+          <p className="m-small text-center">Built for the decks people present every week. Hover a row to pause it.</p>
         </Reveal>
       </div>
       <div className="mt-10 space-y-5">
@@ -60,7 +61,7 @@ export function ProofStrip() {
 /** Kept for reference in other pages: the list of deck kinds. */
 export function DeckKinds() {
   return (
-    <section className="border-b border-[var(--m-line)] bg-white py-14" aria-label="What people make with Kinetic">
+    <section className="border-b border-[var(--m-line)] bg-white py-14" aria-label="What people make with DeckIQ">
       <div className="m-frame">
         <p className="m-small text-center">Built for the decks people present every week</p>
         <ul className="mx-auto mt-8 grid max-w-[920px] grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-5">
@@ -120,7 +121,7 @@ export function Overview() {
             <h2 className="m-h2">
               From rough notes to a finished, <span className="m-accent">animated</span> deck
             </h2>
-            <p className="m-lead mt-5">Kinetic reads what you paste, writes an outline you can change, and builds every slide from a small set of tested layouts. Every number on a slide comes from your material.</p>
+            <p className="m-lead mt-5">DeckIQ reads what you paste, writes an outline you can change, and builds every slide from a small set of tested layouts. Every number on a slide comes from your material.</p>
             <ul className="mt-6 space-y-2 text-[15px]">
               {["Paste notes, a memo or meeting minutes", "Edit the outline, then pick a theme", "Present, or keep editing in plain words"].map((t) => (
                 <li key={t} className="flex items-center gap-2">
@@ -176,10 +177,10 @@ export function TwoWays() {
           </div>
           <div className="m-tex m-tex-purple flex flex-col rounded-[16px] p-8">
             <div className="flex items-center justify-between">
-              <h3 className="text-[22px] font-medium tracking-[-0.02em]">See what Kinetic writes first</h3>
+              <h3 className="text-[22px] font-medium tracking-[-0.02em]">See what DeckIQ writes first</h3>
               <span className="rounded-full bg-white/15 px-2.5 py-1 text-[12px]">outline.json</span>
             </div>
-            <p className="mt-2 text-[14px] text-white/75">The outline below was written by Kinetic&rsquo;s offline engine from a one-page sample memo. Each point keeps the paragraph it came from.</p>
+            <p className="mt-2 text-[14px] text-white/75">The outline below was written by DeckIQ&rsquo;s offline engine from a one-page sample memo. Each point keeps the paragraph it came from.</p>
             <div className="m-code mt-6 flex-1 p-5">
               <JsonCode value={outline} maxLines={30} />
             </div>

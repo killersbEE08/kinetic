@@ -50,8 +50,8 @@ async function sendEmail(to: string, a: Alert): Promise<void> {
       from,
       to: [to],
       subject: a.title.slice(0, 150),
-      text: `${a.title}\n\n${a.body}\n\nOpen in Kinetic: ${link}\n\nTurn these emails off in Settings → Alerts.`,
-      html: `<p style="font:600 16px system-ui">${htmlEscape(a.title)}</p><p style="font:14px system-ui;color:#444">${htmlEscape(a.body)}</p><p><a href="${htmlEscape(link)}" style="font:14px system-ui">Open in Kinetic</a></p><p style="font:12px system-ui;color:#888">Turn these emails off in Settings → Alerts.</p>`,
+      text: `${a.title}\n\n${a.body}\n\nOpen in DeckIQ: ${link}\n\nTurn these emails off in Settings → Alerts.`,
+      html: `<p style="font:600 16px system-ui">${htmlEscape(a.title)}</p><p style="font:14px system-ui;color:#444">${htmlEscape(a.body)}</p><p><a href="${htmlEscape(link)}" style="font:14px system-ui">Open in DeckIQ</a></p><p style="font:12px system-ui;color:#888">Turn these emails off in Settings → Alerts.</p>`,
     }),
   });
   if (!res.ok) logJson("warn", { event: "alert_email_failed", status: res.status });
@@ -63,7 +63,7 @@ async function sendSlack(url: string, a: Alert): Promise<void> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: `*${slackEscape(a.title)}*\n${slackEscape(a.body)}\n<${link}|Open in Kinetic>` }),
+    body: JSON.stringify({ text: `*${slackEscape(a.title)}*\n${slackEscape(a.body)}\n<${link}|Open in DeckIQ>` }),
   });
   if (!res.ok) logJson("warn", { event: "alert_slack_failed", status: res.status });
 }

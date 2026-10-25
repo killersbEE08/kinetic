@@ -236,7 +236,7 @@ function RedesignInner() {
   return (
     <main className="mx-auto max-w-[1200px] px-4 py-8 sm:px-10">
       <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Redesign a deck</h1>
-      <p className="mt-1 max-w-[720px] text-[14px] text-ink-2">Upload a PowerPoint file. Kinetic keeps every fact, number and photo, rewrites each slide around one clear point, and puts it in your look. Compare each slide with the original and keep whichever you prefer.</p>
+      <p className="mt-1 max-w-[720px] text-[14px] text-ink-2">Upload a PowerPoint file. DeckIQ keeps every fact, number and photo, rewrites each slide around one clear point, and puts it in your look. Compare each slide with the original and keep whichever you prefer.</p>
       <div className="mt-5 space-y-3">{error && (error.upgrade ? <UpgradeNote message={error.text} /> : <ErrorNote>{error.text}</ErrorNote>)}</div>
 
       {phase === "pick" && (

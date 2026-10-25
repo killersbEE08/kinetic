@@ -347,6 +347,29 @@
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
 }
+
+/* Template rows: continuous sideways loop (two identical copies, move by one copy). */
+.m-marquee {
+  display: flex;
+  width: max-content;
+  animation: m-marquee 70s linear infinite;
+  will-change: transform;
+}
+.m-marquee[data-dir="-1"] {
+  animation-direction: reverse;
+}
+.m-marquee-wrap:hover .m-marquee,
+.m-marquee-wrap:focus-within .m-marquee {
+  animation-play-state: paused;
+}
+@keyframes m-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
 @keyframes m-fade {
   from {
     opacity: 0;
@@ -365,6 +388,7 @@
   .m-fade,
   .m-nav,
   .m-nav-bar,
+  .m-marquee,
   .m-shine::after {
     transition: none;
     animation: none;

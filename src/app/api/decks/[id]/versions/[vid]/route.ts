@@ -18,7 +18,7 @@ export const GET = handle(async (req: Request, ctx: Ctx) => {
   if (error) dbError(error, "Could not load that version.");
   if (!data) throw new HttpError(404, "Version not found.", "not_found");
   const parsed = Deck.safeParse(data.doc);
-  if (!parsed.success) throw new HttpError(422, "That version can't be opened with this version of Kinetic.", "invalid_version");
+  if (!parsed.success) throw new HttpError(422, "That version can't be opened with this version of DeckIQ.", "invalid_version");
   return json({ deck: parsed.data });
 });
 

@@ -202,7 +202,7 @@ function Player({ linkId, deck, token, allowDownload, allowComments, ownerPrevie
             Report
           </button>
         )}
-        <Link href="/" className="ml-2 hidden text-[12px] text-white/60 hover:text-white/80 sm:inline">Made with Kinetic</Link>
+        <Link href="/" className="ml-2 hidden text-[12px] text-white/60 hover:text-white/80 sm:inline">Made with DeckIQ</Link>
       </footer>
     </div>
   );

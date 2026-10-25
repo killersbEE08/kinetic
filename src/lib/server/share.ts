@@ -56,14 +56,14 @@ export async function verifySessionToken(linkId: string, token: string | null | 
   return safeEqual(sig, await hmac(`view:${linkId}:${id}`)) ? id : null;
 }
 
-/** True when the Kinetic team took this link down. Fails open if the table doesn't exist yet. */
+/** True when the DeckIQ team took this link down. Fails open if the table doesn't exist yet. */
 export async function linkBlocked(db: SupabaseClient, linkId: string): Promise<boolean> {
   const { data, error } = await db.from("blocked_links").select("link_id").eq("link_id", linkId).maybeSingle();
   if (error) return false;
   return !!data;
 }
 
-export const BLOCKED_MESSAGE = "This link was removed because it broke Kinetic's rules.";
+export const BLOCKED_MESSAGE = "This link was removed because it broke DeckIQ's rules.";
 
 /** PBKDF2-SHA256, 100k iterations: "pbkdf2$<iter>$<salt>$<hash>". */
 export async function hashPassword(pw: string): Promise<string> {

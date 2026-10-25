@@ -37,7 +37,7 @@ async function emailTeam(subject: string, text: string) {
 }
 
 // POST /api/abuse: report a shared deck or a comment on it (public, no account). Reported
-// comments are hidden from other viewers at once; deck reports go to the Kinetic team, who can
+// comments are hidden from other viewers at once; deck reports go to the DeckIQ team, who can
 // take the link down (README → "Abuse reports").
 export const POST = handle(async (req: Request) => {
   const ip = clientIp(req);
@@ -48,7 +48,7 @@ export const POST = handle(async (req: Request) => {
   await requireHuman(b.captcha, ip, "report");
 
   const linkId = b.link.match(/\/v\/([A-Za-z0-9_-]{16,40})/)?.[1] ?? b.link;
-  if (!SHARE_ID_RX.test(linkId)) throw new HttpError(400, "That isn't a Kinetic share link.", "invalid_link");
+  if (!SHARE_ID_RX.test(linkId)) throw new HttpError(400, "That isn't a DeckIQ share link.", "invalid_link");
   if (b.kind === "comment" && !b.commentId) throw new HttpError(400, "Which comment?", "invalid_input");
 
   const db = adminDb();

@@ -51,7 +51,7 @@ export function EditDemo() {
               Plain-language edits change <span className="m-accent">one thing</span> at a time
             </>
           }
-          sub="Select a slide or an element and say what you want. Kinetic proposes the change as a set of edits, shows it with a dashed outline, and touches nothing outside your selection."
+          sub="Select a slide or an element and say what you want. DeckIQ proposes the change as a set of edits, shows it with a dashed outline, and touches nothing outside your selection."
         />
         <div className="mt-14 grid gap-4 lg:grid-cols-[320px_1fr]">
           <div role="radiogroup" aria-label="Edit to try" className="flex flex-col gap-1 rounded-[16px] border border-[var(--m-line)] bg-[var(--m-soft)] p-2">
@@ -164,7 +164,7 @@ export function Checks() {
               <span className="ml-3 align-top text-[22px] font-normal tracking-[-0.01em] text-[var(--m-gray)]">failed checks</span>
             </p>
             <p className="m-lead mt-6">
-              Across all {TEMPLATES.length} sample decks and {TEMPLATE_SLIDE_COUNT} slides, counted live on this page by the same checks that run on every deck you generate. When a check fails, Kinetic fixes it or labels the slide for you to review.
+              Across all {TEMPLATES.length} sample decks and {TEMPLATE_SLIDE_COUNT} slides, counted live on this page by the same checks that run on every deck you generate. When a check fails, DeckIQ fixes it or labels the slide for you to review.
             </p>
           </div>
           <div className="m-tex m-tex-blue rounded-[18px] p-5 sm:p-8">

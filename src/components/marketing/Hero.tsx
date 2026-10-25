@@ -16,6 +16,7 @@ const TABS: { type: DeckType; label: string; example: string; glyph: string }[] 
   { type: "launch", label: "Launch", example: "Announce offline mode for our notes app. One in four sessions starts on a weak connection.", glyph: "M7 1l2 5 5 1-4 3 1 5-4-3-4 3 1-5-4-3 5-1z" },
   { type: "sales", label: "Sales", example: "Proposal for a retail chain: onboard 1,200 store staff a year in two days instead of nine.", glyph: "M2 4h11v7H2zM4 2h7v2H4z" },
   { type: "lesson", label: "Lesson", example: "A 20-minute lesson on compound interest for first-year students, with a worked example.", glyph: "M1 4l6.5-3L14 4l-6.5 3zm2 2v4c2 2 7 2 9 0V6" },
+  { type: "academic", label: "Academics", example: "Thesis defence on microplastics in river sediment: 3 sites, 48 samples, method and key findings.", glyph: "M2 2h8l3 3v8H2zM10 2v3h3M4.5 8h6M4.5 10.5h4" },
   { type: "report", label: "Report", example: "Q3 business review: revenue $3.1M, 8,420 restaurants, support response time rose to 11 hours.", glyph: "M2 13V7h3v6zm4.5 0V3h3v10zM11 13V9h3v4z" },
 ];
 
@@ -43,7 +44,7 @@ export function Hero() {
           <RiseWords text="Your notes, as a deck that moves" accent="moves" />
         </h1>
         <motion.p className="m-lead mt-5 max-w-[620px] text-[18px]" initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE, delay: 0.25 }}>
-          Paste a memo or a rough outline. Kinetic plans the story, builds animated slides from your own words, and lets you change them in plain language.
+          Paste a memo or a rough outline. DeckIQ plans the story, builds animated slides from your own words, and lets you change them in plain language.
         </motion.p>
         <motion.div className="mt-8 flex flex-wrap items-center justify-center gap-3" initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE, delay: 0.35 }}>
           <Link href="/new" className="m-pill m-pill-dark m-shine h-[52px] px-7 text-[16px]">Start a deck free</Link>
@@ -77,11 +78,11 @@ export function Hero() {
               </button>
             ))}
           </div>
-          <div className="mt-3 flex items-center gap-2 rounded-[12px] bg-white/80 p-2 pl-4">
+          <div className="mt-3 flex items-center gap-2 rounded-[14px] border border-[var(--m-line)] bg-white p-2 pl-4 shadow-[0_1px_2px_rgba(16,17,20,0.04)] transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--m-blue)] focus-within:shadow-[0_0_0_4px_rgba(37,99,217,0.14)]">
             <label htmlFor="hero-prompt" className="sr-only">What are you presenting?</label>
             <input
               id="hero-prompt"
-              className="h-11 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#8a8e97]"
+              className="h-11 min-w-0 flex-1 bg-transparent text-[15px] text-[var(--m-ink)] outline-none focus-visible:outline-none placeholder:text-[#8a8e97]"
               placeholder={current.example}
               value={text}
               maxLength={4000}

@@ -2,7 +2,7 @@
 
 // The one pinned section on the page (docs/06 §4 allows one): scroll turns a memo into an
 // outline, then into a slide whose builds play as you keep scrolling. The slide is rendered by
-// Kinetic's own engine, so this section is a live demo, not a video.
+// DeckIQ's own engine, so this section is a live demo, not a video.
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from "motion/react";
@@ -15,7 +15,7 @@ import { offlineOutline } from "@/lib/ai/offline";
 import { SAMPLE_NOTES, SAMPLE_PROMPT } from "@/lib/deck/sample";
 
 const STEPS = [
-  { n: "01", title: "Paste what you have", body: "A memo, meeting notes or a rough outline. Kinetic marks every fact it can use: numbers, names, claims." },
+  { n: "01", title: "Paste what you have", body: "A memo, meeting notes or a rough outline. DeckIQ marks every fact it can use: numbers, names, claims." },
   { n: "02", title: "Fix the story first", body: "You get an outline, not slides. Reorder, merge or cut. Each point shows the paragraph it came from." },
   { n: "03", title: "Watch it build", body: "Approve the outline and the slides are laid out and animated. Numbers count up from the figures in your notes." },
 ];

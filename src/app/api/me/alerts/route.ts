@@ -39,6 +39,6 @@ export const PUT = handle(async (req: Request) => {
 export const POST = handle(async (req: Request) => {
   const user = await requireUser(req, "write");
   // pushAlert reads only your own profile row, which RLS allows.
-  await pushAlert(user.db, { kind: "link_opened", ownerId: user.userId, deckId: "test", title: "Test alert from Kinetic", body: "Share-link alerts will look like this.", url: "/settings" });
+  await pushAlert(user.db, { kind: "link_opened", ownerId: user.userId, deckId: "test", title: "Test alert from DeckIQ", body: "Share-link alerts will look like this.", url: "/settings" });
   return json({ ok: true });
 });

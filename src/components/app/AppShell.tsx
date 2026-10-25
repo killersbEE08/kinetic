@@ -151,11 +151,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Desktop sidebar */}
         <aside className="sticky top-0 hidden h-dvh flex-col gap-1 border-r border-line bg-[color-mix(in_srgb,var(--ink)_3%,var(--canvas))] p-3 md:flex" aria-label="Main navigation">
           <div className={`flex items-center gap-2.5 px-1.5 py-1.5 ${collapsed ? "flex-col" : ""}`}>
-            <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5" aria-label={collapsed ? "Kinetic home" : undefined}>
+            <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5" aria-label={collapsed ? "DeckIQ home" : undefined}>
               <Mark />
               {!collapsed && (
                 <span className="min-w-0 leading-tight">
-                  <span className="block truncate text-[14px] font-semibold">{backend.mode === "cloud" ? <CloudName /> : "Kinetic"}</span>
+                  <span className="block truncate text-[14px] font-semibold">{backend.mode === "cloud" ? <CloudName /> : "DeckIQ"}</span>
                   <span className="block truncate text-[12px] text-ink-2">{planLabel}</span>
                 </span>
               )}
@@ -201,8 +201,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {/* Mobile top bar */}
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-canvas px-4 md:hidden">
-          <Link href="/dashboard" aria-label="Kinetic home"><Mark size={26} /></Link>
-          <span className="truncate text-[14px] font-semibold">{NAV.find((n) => isActive(path, n.href))?.label ?? (path.startsWith("/settings") ? "Settings" : "Kinetic")}</span>
+          <Link href="/dashboard" aria-label="DeckIQ home"><Mark size={26} /></Link>
+          <span className="truncate text-[14px] font-semibold">{NAV.find((n) => isActive(path, n.href))?.label ?? (path.startsWith("/settings") ? "Settings" : "DeckIQ")}</span>
           <button type="button" onClick={openPalette} className="btn btn-ghost btn-sm ml-auto px-2.5" aria-label="Search"><Search size={18} aria-hidden="true" /></button>
           <NotificationBell align="right" />
           {backend.mode === "cloud" && <UserButton />}

@@ -179,7 +179,7 @@ function SettingsInner() {
     return (
       <main className="mx-auto max-w-[560px] px-6 py-24">
         <h1 className="text-[24px] font-semibold tracking-[-0.02em]">{cloud ? "Your account is deleted" : "Browser data cleared"}</h1>
-        <p className="mt-2 text-[15px] text-ink-2">{cloud ? "Your decks, photos and usage history have been removed. Thanks for trying Kinetic." : "Decks and photos saved in this browser have been removed."}</p>
+        <p className="mt-2 text-[15px] text-ink-2">{cloud ? "Your decks, photos and usage history have been removed. Thanks for trying DeckIQ." : "Decks and photos saved in this browser have been removed."}</p>
         <div className="mt-6">{cloud ? <SignedOutAfterDelete /> : <Link href="/dashboard" className="btn btn-primary">Back to dashboard</Link>}</div>
       </main>
     );

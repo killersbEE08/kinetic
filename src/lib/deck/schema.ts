@@ -288,7 +288,7 @@ export const Outline = z.object({
 export type Outline = z.infer<typeof Outline>;
 export type OutlineSlide = z.infer<typeof OutlineSlide>;
 
-export const DECK_TYPES = ["pitch", "sales", "launch", "lesson", "report", "custom"] as const;
+export const DECK_TYPES = ["pitch", "sales", "launch", "lesson", "academic", "report", "custom"] as const;
 export type DeckType = (typeof DECK_TYPES)[number];
 
 export const GenerationInput = z.object({

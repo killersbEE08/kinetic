@@ -61,7 +61,7 @@ export function UseCases() {
 export function ThreeSteps() {
   const steps = [
     ["Add your material", "Write a prompt or paste notes. Choose the deck type, the audience and the language."],
-    ["Fix the story", "Kinetic writes an outline. Reorder, merge or delete slides. Each point shows the paragraph it came from."],
+    ["Fix the story", "DeckIQ writes an outline. Reorder, merge or delete slides. Each point shows the paragraph it came from."],
     ["Present or keep editing", "Slides build one by one. Edit text on the canvas, ask for changes in plain words, then present."],
   ];
   return (

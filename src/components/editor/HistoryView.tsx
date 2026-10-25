@@ -140,7 +140,7 @@ export function HistoryView({ deck, saveState, onRestore, onClose }: { deck: Dec
       <aside className="flex w-[320px] shrink-0 flex-col border-r border-line bg-surface" aria-label="Versions">
         <div className="border-b border-line p-4">
           <h2 className="flex items-center gap-2 text-[15px] font-semibold"><History size={16} aria-hidden="true" />Version history</h2>
-          <p className="mt-1 text-[12px] leading-[17px] text-ink-2">Kinetic saves a copy when the deck is created, before each AI edit, and every 25 edits. Name a version to keep it for good.</p>
+          <p className="mt-1 text-[12px] leading-[17px] text-ink-2">DeckIQ saves a copy when the deck is created, before each AI edit, and every 25 edits. Name a version to keep it for good.</p>
           <form
             className="mt-3 flex gap-1.5"
             onSubmit={(e) => {
@@ -167,7 +167,7 @@ export function HistoryView({ deck, saveState, onRestore, onClose }: { deck: Dec
           {versions === null ? (
             [0, 1, 2].map((i) => <li key={i} className="skeleton mx-2.5 my-2 h-10" />)
           ) : versions.length === 0 ? (
-            <li className="px-3 py-6 text-center text-[12px] text-ink-2">No saved versions yet. Name one above, or keep editing and Kinetic will save some for you.</li>
+            <li className="px-3 py-6 text-center text-[12px] text-ink-2">No saved versions yet. Name one above, or keep editing and DeckIQ will save some for you.</li>
           ) : (
             groups.map(([day, list]) => (
               <li key={day}>

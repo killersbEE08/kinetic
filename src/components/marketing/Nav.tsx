@@ -103,9 +103,9 @@ export function Nav() {
   return (
     <header className={`m-nav sticky top-0 z-30 ${floating ? "m-nav-float" : ""}`}>
       <div className="m-nav-bar m-frame flex h-16 items-center justify-between gap-6">
-        <Link href="/" className="flex items-center gap-2 text-[18px] font-medium tracking-[-0.02em]" aria-label="Kinetic home">
+        <Link href="/" className="flex items-center gap-2 text-[18px] font-medium tracking-[-0.02em]" aria-label="DeckIQ home">
           <Mark />
-          Kinetic
+          DeckIQ
         </Link>
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
           {MENUS.map((m) => (

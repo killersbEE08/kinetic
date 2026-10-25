@@ -8,14 +8,14 @@ import { useBackend } from "@/lib/client/backend";
 
 export function Wordmark({ href = "/" }: { href?: string }) {
   return (
-    <Link href={href} className="inline-flex items-center gap-2 font-semibold tracking-[-0.02em] text-[17px] text-ink" aria-label="Kinetic home">
+    <Link href={href} className="inline-flex items-center gap-2 font-semibold tracking-[-0.02em] text-[17px] text-ink" aria-label="DeckIQ home">
       {/* Mark: three bars that read as a build sequence. */}
       <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
         <rect x="1" y="10" width="4" height="7" rx="1" fill="currentColor" />
         <rect x="7" y="6" width="4" height="11" rx="1" fill="currentColor" />
         <rect x="13" y="1" width="4" height="16" rx="1" fill="var(--accent)" />
       </svg>
-      Kinetic
+      DeckIQ
     </Link>
   );
 }

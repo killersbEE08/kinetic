@@ -108,17 +108,28 @@ export function TiltCard({ children, className = "", max = 5 }: { children: Reac
   );
 }
 
-/** A horizontal row that slides sideways while the page scrolls past it. */
-export function ScrollRow({ children, direction = 1, distance = 28, className = "" }: { children: ReactNode; direction?: 1 | -1; distance?: number; className?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
+/**
+ * A row of cards that keeps gliding sideways in a seamless loop. Pauses on hover and keyboard
+ * focus; with reduced motion it becomes a normal sideways-scrollable row instead.
+ */
+export function ScrollRow({ children, direction = 1, seconds = 70, className = "" }: { children: ReactNode; direction?: 1 | -1; seconds?: number; className?: string }) {
   const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
-  const x = useTransform(scrollYProgress, [0, 1], direction > 0 ? [`${-distance / 2}%`, `${distance / 2 - distance}%`] : [`${distance / 2 - distance}%`, `${-distance / 2}%`]);
+  if (reduce) {
+    return (
+      <div className={`overflow-x-auto overscroll-x-contain ${className}`}>
+        <div className="flex w-max gap-5 px-6">{children}</div>
+      </div>
+    );
+  }
   return (
-    <div ref={ref} className={`overflow-hidden ${className}`}>
-      <motion.div className="flex w-max gap-5" style={reduce ? undefined : { x }}>
-        {children}
-      </motion.div>
+    <div className={`m-marquee-wrap overflow-hidden ${className}`}>
+      <div className="m-marquee" data-dir={direction} style={{ animationDuration: `${seconds}s` }}>
+        <div className="flex flex-none gap-5 pr-5">{children}</div>
+        {/* Second copy makes the loop seamless; hidden from screen readers and tab order. */}
+        <div className="flex flex-none gap-5 pr-5" aria-hidden="true" inert>
+          {children}
+        </div>
+      </div>
     </div>
   );
 }

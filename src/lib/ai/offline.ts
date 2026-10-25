@@ -42,6 +42,14 @@ const SECTIONS: Record<DeckType, { title: string; keywords: RegExp; layout?: str
     { title: "Example", keywords: /example|for instance|case|such as|e\.g\./i, hint: "Give one concrete example." },
     { title: "Recap", keywords: /summary|recap|remember|takeaway|conclusion/i, layout: "closing", hint: "Summarise the 3 takeaways." },
   ],
+  academic: [
+    { title: "Research question", keywords: /question|aim|objective|hypothes|study|thesis|research/i, hint: "State the research question or hypothesis in one sentence." },
+    { title: "Background", keywords: /background|literature|prior|previous|known|context|gap/i, hint: "Summarise what is known and the gap this work fills." },
+    { title: "Method", keywords: /method|sample|data|survey|experiment|participants|measured|collected/i, layout: "process", hint: "Describe the method: data, sample size and analysis." },
+    { title: "Results", keywords: /result|found|finding|%|significant|increase|decrease|\d/i, hint: "Add the main results with their numbers." },
+    { title: "Discussion", keywords: /discussion|implication|limitation|suggest|means|interpret/i, hint: "Explain what the results mean and their limits." },
+    { title: "Conclusion", keywords: /conclusion|summary|future|next|recommend|contribution/i, layout: "closing", hint: "State the contribution and future work." },
+  ],
   report: [
     { title: "Summary", keywords: /summary|overall|quarter|month|year|highlights/i, hint: "State the headline result for the period." },
     { title: "Key metrics", keywords: /%|revenue|users|growth|cost|margin|\d/i, hint: "Add the 3–4 metrics you report on." },

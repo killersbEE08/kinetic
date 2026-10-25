@@ -8,7 +8,7 @@ import { useBackend } from "@/lib/client/backend";
 function DemoNotice() {
   return (
     <div className="max-w-md rounded-[14px] border border-line bg-surface p-6 text-[15px] leading-[22px]">
-      <h1 className="mb-2 text-[17px] font-semibold">Sign-in is not set up on this copy of Kinetic</h1>
+      <h1 className="mb-2 text-[17px] font-semibold">Sign-in is not set up on this copy of DeckIQ</h1>
       <p className="text-ink-2">
         Add <code>NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</code> and <code>CLERK_SECRET_KEY</code> to enable accounts. Until then you can use demo mode: decks are saved in this browser.
       </p>

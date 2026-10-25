@@ -6,7 +6,7 @@ export const PLANS = [
     price: "$0",
     period: "",
     india: "₹0",
-    blurb: "Try Kinetic on a real deck.",
+    blurb: "Try DeckIQ on a real deck.",
     features: ["3 decks", "100 AI credits a month", "All 6 themes and 20 layouts", "Present in the browser"],
   },
   {
@@ -16,7 +16,7 @@ export const PLANS = [
     period: "per month, billed yearly ($20 monthly)",
     india: "₹499 a month",
     blurb: "For founders and marketers who present every week.",
-    features: ["Unlimited decks", "2,000 AI credits a month", "Free-form AI edits with Gemini", "No Kinetic badge"],
+    features: ["Unlimited decks", "2,000 AI credits a month", "Free-form AI edits with Gemini", "No DeckIQ badge"],
   },
   {
     id: "team",

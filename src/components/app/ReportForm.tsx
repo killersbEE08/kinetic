@@ -25,7 +25,7 @@ export function ReportForm({ link, commentId, dark = false, onDone, askLink = fa
     return (
       <div role="status" className="text-[14px]">
         <p className="font-semibold">Thanks, we got your report.</p>
-        <p className={`mt-1 ${muted}`}>{commentId ? "The comment is hidden from other viewers while the deck owner reviews it." : "The Kinetic team reviews reports and removes links that break the rules."}</p>
+        <p className={`mt-1 ${muted}`}>{commentId ? "The comment is hidden from other viewers while the deck owner reviews it." : "The DeckIQ team reviews reports and removes links that break the rules."}</p>
         {onDone && <button type="button" className={dark ? "mt-3 h-9 rounded-[8px] bg-white px-3 text-[13px] font-semibold text-[#0b0b0c]" : "btn btn-secondary btn-sm mt-3"} onClick={onDone}>Close</button>}
       </div>
     );

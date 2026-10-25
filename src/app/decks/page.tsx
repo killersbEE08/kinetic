@@ -327,7 +327,7 @@ function DecksInner() {
           </div>
           <div>
             <h2 className="text-[22px] font-semibold tracking-[-0.01em]">Start with your notes, or open a sample</h2>
-            <p className="mt-2 text-[15px] leading-[22px] text-ink-2">Paste a memo or describe the talk and Kinetic will outline it first. The sample is a {sample.slides.length}-slide seed pitch for a fictional company you can edit freely.</p>
+            <p className="mt-2 text-[15px] leading-[22px] text-ink-2">Paste a memo or describe the talk and DeckIQ will outline it first. The sample is a {sample.slides.length}-slide seed pitch for a fictional company you can edit freely.</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link href="/new" className="btn btn-primary">New deck</Link>
               <button type="button" className="btn btn-secondary" onClick={openSample} disabled={!!busy}>

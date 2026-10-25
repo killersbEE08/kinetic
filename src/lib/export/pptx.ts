@@ -151,7 +151,7 @@ export async function exportPptx(deck: Deck, opts: PptxOptions, onProgress?: (do
   pptx.title = deck.title;
   pptx.subject = deck.title;
   pptx.company = deck.brand?.name ?? "";
-  pptx.author = "Kinetic";
+  pptx.author = "DeckIQ";
   const fonts = FONTS[opts.fonts];
   pptx.theme = { headFontFace: fonts.sans, bodyFontFace: fonts.sans };
   const theme = deckTheme(deck);

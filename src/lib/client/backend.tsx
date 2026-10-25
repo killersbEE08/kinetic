@@ -248,7 +248,7 @@ async function zipExport(data: Record<string, unknown>, photos: { id: string; na
   const { zipSync, strToU8 } = await import("fflate");
   const files: Record<string, Uint8Array> = {
     "kinetic-export.json": strToU8(JSON.stringify(data, null, 2)),
-    "README.txt": strToU8("Kinetic data export.\nkinetic-export.json: your decks (full documents), photo list and AI usage.\nphotos/: the photo files you uploaded.\nDecks can be re-imported by support on request.\n"),
+    "README.txt": strToU8("DeckIQ data export.\nkinetic-export.json: your decks (full documents), photo list and AI usage.\nphotos/: the photo files you uploaded.\nDecks can be re-imported by support on request.\n"),
   };
   const used = new Set<string>();
   for (const [i, p] of photos.entries()) {

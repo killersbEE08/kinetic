@@ -1,9 +1,22 @@
 import "server-only";
 
+// Public values are written into the build by Next.js only when referenced literally, so a
+// dynamic process.env[name] lookup misses them on Cloudflare unless they are also Worker vars.
+// List them here so the server sees the same values the browser was built with.
+const BUILT_IN: Record<string, string | undefined> = {
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+  NEXT_PUBLIC_ABUSE_EMAIL: process.env.NEXT_PUBLIC_ABUSE_EMAIL,
+  NEXT_PUBLIC_RELEASE: process.env.NEXT_PUBLIC_RELEASE,
+};
+
 // Reads configuration at request time. On Cloudflare, OpenNext copies Worker vars and
 // secrets into process.env; locally, Next.js loads .env.local.
 export function env(name: string): string | undefined {
-  const v = process.env[name];
+  const v = process.env[name] ?? BUILT_IN[name];
   return v && v.trim() ? v.trim() : undefined;
 }
 

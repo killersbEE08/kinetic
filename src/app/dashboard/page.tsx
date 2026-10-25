@@ -26,7 +26,7 @@ import { ASSET_PREFIX } from "@/lib/deck/media";
 import { THEMES, deckTheme, getTheme, withBrand } from "@/lib/deck/themes";
 import { CATEGORIES, CATEGORY_LABEL, TEMPLATES, forkDeck, templateDeck, type TemplateCategory } from "@/lib/deck/templates";
 
-const TYPE_LABEL: Record<DeckType, string> = { pitch: "Pitch", sales: "Sales", launch: "Launch", lesson: "Lesson", report: "Report", custom: "Other" };
+const TYPE_LABEL: Record<DeckType, string> = { pitch: "Pitch", sales: "Sales", launch: "Launch", lesson: "Lesson", academic: "Academics", report: "Report", custom: "Other" };
 const LANGUAGES = ["English", "Hindi", "Spanish", "French", "German", "Portuguese", "Japanese", "Arabic", "Bengali", "Tamil", "Marathi"];
 const SLIDE_COUNTS = ["auto", 5, 8, 10, 12, 15, 20] as const;
 
@@ -42,6 +42,7 @@ const IDEAS: { label: string; prompt: string; type: DeckType }[] = [
   { label: "Seed pitch from my memo", prompt: "Seed pitch for investors. Use the numbers in my notes and end with a clear ask.", type: "pitch" },
   { label: "Sales proposal for a named client", prompt: "Sales proposal for <client name>: their problem in their words, our plan, timeline and price.", type: "sales" },
   { label: "Lesson from lecture notes", prompt: "A 30-minute lesson with learning goals, two worked examples and a recap.", type: "lesson" },
+  { label: "Thesis or research talk", prompt: "Research presentation: question, background, method, results with numbers, discussion and conclusion.", type: "academic" },
   { label: "Quarterly review", prompt: "Quarterly review for the leadership team: results, what went well, what didn't, next quarter's priorities.", type: "report" },
 ];
 
@@ -63,7 +64,7 @@ const wordsOf = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 
 function Select({ label, value, onChange, children }: { label: string; value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
-    <label className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-line bg-surface pl-2.5 text-[13px] text-ink-2 focus-within:border-accent">
+    <label className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-line bg-surface pl-2.5 text-[13px] text-ink-2 transition-shadow focus-within:border-accent focus-within:ring-2 focus-within:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]">
       {label}
       <select className="h-full max-w-[180px] cursor-pointer appearance-none truncate bg-transparent pr-2.5 font-medium text-ink outline-none" value={value} onChange={(e) => onChange(e.target.value)}>
         {children}
@@ -204,7 +205,7 @@ function CreateBox() {
             <textarea
               aria-label="Your notes"
               className="field min-h-[180px] resize-y text-[15px]"
-              placeholder="Paste a memo, meeting notes, an outline or data. Leave a blank line between topics. Kinetic only uses facts from here."
+              placeholder="Paste a memo, meeting notes, an outline or data. Leave a blank line between topics. DeckIQ only uses facts from here."
               value={notes}
               maxLength={400_000}
               onChange={(e) => setNotes(e.target.value)}
