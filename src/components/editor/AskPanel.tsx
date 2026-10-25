@@ -24,7 +24,7 @@ export interface Proposal {
   status: "pending" | "accepted" | "discarded" | "stale";
 }
 
-type ScopeKind = EditScope["kind"];
+type ScopeKind = EditScope["kind"] | "agent";
 
 /**
  * AI edit panel (docs/02 §4.4). The AI only proposes; the editor shows the proposal with a
@@ -50,7 +50,7 @@ export function AskPanel({
   onDiscard: () => void;
 }) {
   const backend = useBackend();
-  const [chosenKind, setKind] = useState<ScopeKind>(selected ? "element" : "slide");
+  const [chosenKind, setKind] = useState<ScopeKind>("agent");
   // Element scope needs a selection; fall back to the slide when nothing is selected.
   const kind: ScopeKind = chosenKind === "element" && !selected ? "slide" : chosenKind;
   const [text, setText] = useState("");
@@ -68,8 +68,8 @@ export function AskPanel({
   }
 
   const scope: EditScope =
-    kind === "deck" ? { kind: "deck" } : kind === "element" && selected ? { kind: "element", slideId: slide.id, elementIds: [selected.id] } : { kind: "slide", slideIds: [slide.id] };
-  const scopeLabel = kind === "deck" ? "Whole deck" : kind === "element" && selected ? `Slide ${slideIndex + 1} · ${selected.slot}` : `Slide ${slideIndex + 1}`;
+    kind === "deck" || kind === "agent" ? { kind: "deck" } : kind === "element" && selected ? { kind: "element", slideId: slide.id, elementIds: [selected.id] } : { kind: "slide", slideIds: [slide.id] };
+  const scopeLabel = kind === "agent" ? "Full access" : kind === "deck" ? "Whole deck" : kind === "element" && selected ? `Slide ${slideIndex + 1} · ${selected.slot}` : `Slide ${slideIndex + 1}`;
 
   async function ask(instruction: string) {
     const ins = instruction.trim();
@@ -78,8 +78,9 @@ export function AskPanel({
     setBusy(true);
     setError(null);
     try {
-      const r = await backend.edit(deck, scope, ins);
-      onPropose({ id: ++seq.current, scopeLabel, instruction: ins, ...r, baseVersionKey: deckKey, status: "pending" });
+      const r = kind === "agent" ? await backend.agent(deck, { slideId: slide.id, elementId: selected?.id }, ins) : await backend.edit(deck, scope, ins);
+      const summary = r.skipped?.length ? `${r.summary}\nSkipped: ${r.skipped.slice(0, 3).join(" ")}` : r.summary;
+      onPropose({ id: ++seq.current, scopeLabel, instruction: ins, ...r, summary, baseVersionKey: deckKey, status: "pending" });
       setText("");
     } catch (e) {
       setError({ text: e instanceof ApiError ? e.message : "The AI edit failed. Try again.", upgrade: e instanceof ApiError && e.status === 402 });
@@ -93,7 +94,7 @@ export function AskPanel({
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto" aria-live="polite">
         {history.length === 0 && !busy && (
           <p className="text-[13px] leading-[19px] text-ink-2">
-            Choose what the AI may change, then type a request such as &ldquo;make this a three-step timeline&rdquo;. You&rsquo;ll see the change before it&rsquo;s applied.
+            Pick <b className="font-medium text-ink">Full access</b> to let the AI use every editor tool: add, delete, reorder and rewrite slides, change the theme, styles, notes and backgrounds. Try &ldquo;add a pricing slide after slide 3 and switch to the Night theme&rdquo;. You&rsquo;ll see the change before it&rsquo;s applied.
           </p>
         )}
         {history.map((p) => (
@@ -103,7 +104,7 @@ export function AskPanel({
               {p.instruction}
             </p>
             <div className={`rounded-[10px] border p-3 text-[13px] ${p.status === "pending" ? "border-dashed border-accent" : "border-line"}`}>
-              <p>{p.summary}</p>
+              <p className="whitespace-pre-line">{p.summary}</p>
               {p.issues.filter((i) => !i.fixed || i.rule === "factuality").slice(0, 3).map((i, k) => (
                 <p key={k} className="mt-1 text-[12px] text-ink-2">
                   Slide {i.slideIndex + 1}: {i.message}
@@ -141,7 +142,7 @@ export function AskPanel({
         }}
       >
         <div className="mb-2 flex flex-wrap gap-1" role="radiogroup" aria-label="What the AI may change">
-          {(["deck", "slide", "element"] as const).map((k) => (
+          {(["agent", "deck", "slide", "element"] as const).map((k) => (
             <button
               key={k}
               type="button"
@@ -152,7 +153,7 @@ export function AskPanel({
               className={`rounded-[6px] border px-2 py-1 text-[12px] ${kind === k ? "border-accent text-ink" : "border-line text-ink-2"} disabled:opacity-40`}
               title={k === "element" && !selected ? "Click an element on the slide first" : undefined}
             >
-              {k === "deck" ? "Whole deck" : k === "slide" ? `Slide ${slideIndex + 1}` : selected ? elementLabel(selected).slice(0, 22) : "Selected element"}
+              {k === "agent" ? "Full access" : k === "deck" ? "Whole deck" : k === "slide" ? `Slide ${slideIndex + 1}` : selected ? elementLabel(selected).slice(0, 22) : "Selected element"}
             </button>
           ))}
         </div>
@@ -169,7 +170,7 @@ export function AskPanel({
           className="field min-h-[72px] resize-none text-[14px]"
           placeholder={`Change ${scopeLabel.toLowerCase()}…`}
           value={text}
-          maxLength={1000}
+          maxLength={2000}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !(e.metaKey || e.ctrlKey)) {
@@ -181,7 +182,7 @@ export function AskPanel({
         <button type="submit" className="btn btn-primary btn-sm mt-2 w-full" disabled={busy || text.trim().length < 2}>
           {busy ? "Working" : "Propose change"}
         </button>
-        <CreditCost credits={CREDIT_COST.edit} className="mt-1 block text-center" />
+        <CreditCost credits={kind === "agent" ? CREDIT_COST.agent : CREDIT_COST.edit} className="mt-1 block text-center" />
       </form>
     </div>
   );

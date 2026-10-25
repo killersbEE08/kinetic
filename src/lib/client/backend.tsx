@@ -169,6 +169,8 @@ export interface EditResult {
   issues: QaIssue[];
   changedSlideIds: string[];
   engine: "gemini" | "offline";
+  /** Full-access AI only: tool calls that could not run. */
+  skipped?: string[];
 }
 
 export interface GenerateArgs {
@@ -201,6 +203,8 @@ export interface Backend {
   outline(input: GenerationInput): Promise<{ outline: Outline; engine: string }>;
   generate(args: GenerateArgs, onSlide: (index: number, slide: Slide) => void, signal?: AbortSignal): Promise<{ deck: Deck; issues: QaIssue[]; engine: string }>;
   edit(deck: Deck, scope: EditScope, instruction: string): Promise<EditResult>;
+  /** Full-access AI: may change anything in the deck. Returns a proposal like edit(). */
+  agent(deck: Deck, context: { slideId?: string; elementId?: string }, instruction: string): Promise<EditResult>;
   me(): Promise<Me | null>;
   checkout(plan: "pro" | "team", seats?: number): Promise<string>;
   portal(): Promise<string>;
@@ -438,6 +442,9 @@ export function CloudBackendProvider({ children }: { children: ReactNode }) {
       },
       async edit(deck, scope, instruction) {
         return (await (await call("/api/ai/edit", { method: "POST", body: JSON.stringify({ deck, scope, instruction }) })).json()) as EditResult;
+    },
+    async agent(deck, context, instruction) {
+      return (await (await call("/api/ai/agent", { method: "POST", body: JSON.stringify({ deck, context, instruction }) })).json()) as EditResult;
       },
       async me() {
         return (await (await call("/api/me")).json()) as Me;
@@ -835,6 +842,10 @@ export function DemoBackendProvider({ children }: { children: ReactNode }) {
           if (e instanceof EditError) throw new ApiError(422, e.message, "edit_rejected");
           throw e;
         }
+      },
+      async agent() {
+        await sleep(150);
+        throw new ApiError(422, "Full access needs a signed-in account with Gemini. In demo mode, use the Slide or Element options.", "edit_rejected");
       },
       async me() {
         return null;

@@ -12,6 +12,9 @@ import { geminiJson, geminiModelName } from "./gemini";
 import { offlineOutline, offlineSlides, outlineSlideToSlotted } from "./offline";
 import { EditElementsReply, EditSlidesReply, editElementsPrompt, editSlidesPrompt, outlinePrompt, slidesPrompt } from "./prompts";
 import { buildProposal, EditError, offlineEdit, selectedSlideIndexes, slotsToElements, slottedForAi, slottedToSlides, type Proposal } from "./edit";
+import { AgentError, AgentReply, buildAgentProposal, deckForAgent, type AgentContext, type AgentProposal } from "./agent";
+import { agentPrompt } from "./prompts";
+import { THEMES } from "../deck/themes";
 
 export type Engine = "gemini" | "offline";
 export const engine = (): Engine => (config.geminiEnabled() ? "gemini" : "offline");
@@ -148,4 +151,28 @@ export async function proposeEdit(user: AuthedUser, deck: Deck, scope: EditScope
   const slides = slottedToSlides(deck, scope, reply.slides);
   const change = scope.kind === "deck" ? ({ kind: "deck", slides } as const) : ({ kind: "slides", slides } as const);
   return { ...buildProposal(deck, scope, change, reply.summary, source || undefined), engine: "gemini" };
+}
+
+/** Full-access AI: the model plans editor tool calls; they run on a copy and come back as one proposal. */
+export async function proposeAgentEdit(user: AuthedUser, deck: Deck, ctx: AgentContext, instruction: string): Promise<AgentProposal & { engine: Engine }> {
+  if (engine() === "offline") throw new AgentError("Full access needs Gemini. Add a GEMINI_API_KEY, or use the Slide / Element options for quick offline edits.");
+  const { model } = await chargeCredits(user, "agent", CREDIT_COST.agent);
+  if (!model) throw new AgentError("The free AI tier is at today's capacity. Try again later, or use the Slide / Element options.");
+  const source = deck.source ?? "";
+  const reply = await geminiJson({
+    ...agentPrompt({
+      instruction,
+      deck: deckForAgent(deck),
+      themes: THEMES.map((t) => `${t.id} (${t.description})`).join(", "),
+      currentSlideId: ctx.slideId,
+      selectedElementId: ctx.elementId,
+      sourceText: source,
+      language: deck.language || "en",
+    }),
+    schema: AgentReply,
+    model,
+    maxOutputTokens: 16384,
+    timeoutMs: 90_000,
+  });
+  return { ...buildAgentProposal(deck, reply, ctx, source || undefined), engine: "gemini" };
 }

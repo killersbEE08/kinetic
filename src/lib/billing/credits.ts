@@ -7,6 +7,8 @@ export const CREDIT_COST = {
   generatePerSlide: 1,
   generateMax: 50,
   edit: 1,
+  /** Full-access AI request (can change many slides at once). */
+  agent: 2,
 } as const;
 
 export function generateCost(slides: number): number {

@@ -116,7 +116,7 @@ export function Modal({ open, onClose, title, children, width = "w-[min(640px,ca
         <h2 className="text-[15px] font-semibold">{title}</h2>
         <button type="button" className="btn btn-ghost btn-sm min-h-8" onClick={onClose}>Close</button>
       </div>
-      <div className="max-h-[70vh] overflow-y-auto p-5">{open && children}</div>
+      <div className="max-h-[70dvh] overflow-y-auto overscroll-contain p-5">{open && children}</div>
     </dialog>
   );
 }

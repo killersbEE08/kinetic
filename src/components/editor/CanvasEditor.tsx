@@ -248,6 +248,12 @@ export function CanvasEditor({
 
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     if (!node) {
+      // On touch, dragging on empty space scrolls instead of drawing a selection box.
+      if (e.pointerType === "touch") {
+        gesture.current = null;
+        if (selectedIds.length) onSelectIds([]);
+        return;
+      }
       const p = toStage(e.clientX, e.clientY);
       gesture.current = { kind: "marquee", sx: e.clientX, sy: e.clientY, ox: p.x, oy: p.y, moved: false, additive, base: additive ? selectedIds : [] };
       return;
@@ -470,7 +476,9 @@ export function CanvasEditor({
     <div
       ref={wrap}
       data-canvas=""
-      className="relative touch-none select-none"
+      // Only block browser scrolling while something is selected (so it can be dragged).
+      // With nothing selected, a finger on the slide scrolls the page like everywhere else.
+      className={`relative select-none ${selectedIds.length || editingId ? "touch-none" : "touch-pan-y touch-pinch-zoom"}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

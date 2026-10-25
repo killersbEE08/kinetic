@@ -14,7 +14,7 @@ const BANNED_WORDS = [
   "like never before", "the future of", "say goodbye to", "look no further", "imagine a world", "we've got you covered",
 ];
 
-const RULES = `Rules you must follow:
+export const RULES = `Rules you must follow:
 1. Use only facts, numbers, names, dates and quotes that appear in the user's material. Never invent them.
    If a slide needs a fact that is missing, write a short placeholder that says what to add, and set "suggested": true on that slot.
 2. Less text. A headline is at most 12 words. A slide has at most 40 words of body text. Each point is at most 12 words. At most 5 points.
@@ -187,5 +187,81 @@ export function editElementsPrompt(args: { instruction: string; layout: string; 
     system: `You edit selected parts of one presentation slide. Return new content only for the slots you were given, using the same slot names and types.\n${RULES}`,
     user: `Instruction: ${args.instruction}\nLanguage: ${args.language}\nSlide layout: ${args.layout}. Slide headline: ${args.slideTitle}\n\nSelected slots:\n${JSON.stringify(args.current, null, 1)}\n\n<source name="notes">\n${args.sourceText.slice(0, 60_000) || "(none)"}\n</source>`,
     jsonSchema: EDIT_ELEMENTS_JSON_SCHEMA,
+  };
+}
+
+// ---------------- Full-access agent ----------------
+
+export const AGENT_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string", description: "What you changed, in at most 3 short lines." },
+    actions: {
+      type: "array",
+      minItems: 1,
+      maxItems: 60,
+      items: {
+        type: "object",
+        properties: {
+          tool: {
+            type: "string",
+            enum: [
+              "set_deck_title", "set_theme", "set_motion_intensity", "add_slide", "rewrite_slide", "change_layout", "delete_slide",
+              "duplicate_slide", "move_slide", "set_hidden", "set_notes", "set_transition", "set_background", "style_element", "delete_element",
+            ],
+          },
+          slideId: { type: "string" },
+          afterSlideId: { type: "string", description: 'add_slide only: id of the slide to insert after, "start", or "previous" (after the slide added by the previous action).' },
+          toPosition: { type: "integer", description: "move_slide only: new 1-based position." },
+          elementId: { type: "string" },
+          title: { type: "string" },
+          themeId: { type: "string" },
+          intensity: { type: "string", enum: ["calm", "standard", "expressive"] },
+          layout: { type: "string", enum: AI_LAYOUT_IDS },
+          slots: { type: "array", items: SLOT_JSON, maxItems: 6 },
+          notes: { type: "string" },
+          hidden: { type: "boolean" },
+          transition: { type: "string", enum: ["cut", "fade", "push", "morph"] },
+          color: { type: "string", description: 'set_background: "#rrggbb" or "none".' },
+          style: {
+            type: "object",
+            properties: {
+              fontSize: { type: "number" },
+              color: { type: "string", description: "#rrggbb or a theme role: text, muted, accent, accent2, bg, surface, rule." },
+              bold: { type: "boolean" },
+              italic: { type: "boolean" },
+              underline: { type: "boolean" },
+              align: { type: "string", enum: ["left", "center", "right"] },
+              fill: { type: "string" },
+              opacity: { type: "number" },
+            },
+          },
+        },
+        required: ["tool"],
+      },
+    },
+  },
+  required: ["summary", "actions"],
+};
+
+const AGENT_TOOL_GUIDE = `Tools (each action is one tool call; they run in order):
+- set_deck_title {title}
+- set_theme {themeId}
+- set_motion_intensity {intensity}
+- add_slide {afterSlideId?, layout, slots, notes?}  new slide with content
+- rewrite_slide {slideId, layout?, slots, notes?}  replace the slide's content (send every slot you want to keep)
+- change_layout {slideId, layout}  keeps the content, changes the arrangement
+- delete_slide {slideId} / duplicate_slide {slideId} / move_slide {slideId, toPosition}
+- set_hidden {slideId, hidden} / set_notes {slideId, notes} / set_transition {slideId, transition}
+- set_background {slideId, color}
+- style_element {slideId, elementId, style} / delete_element {slideId, elementId}
+Use ids exactly as given. To add several new slides in a row, give the first one afterSlideId of an existing slide and the next ones afterSlideId "previous" (right after the slide added just before). Prefer one rewrite_slide over many small edits.
+Do only what the user asked. Do not delete or rewrite slides they did not mention.`;
+
+export function agentPrompt(args: { instruction: string; deck: unknown; themes: string; currentSlideId?: string; selectedElementId?: string; sourceText: string; language: string }) {
+  return {
+    system: `You operate a presentation editor on the user's behalf. You can change anything in the deck by returning tool calls.\n${AGENT_TOOL_GUIDE}\n${RULES}\nThemes: ${args.themes}\nAvailable layouts:\n${layoutCatalog()}`,
+    user: `Request: ${args.instruction}\nLanguage: ${args.language}\nThe user is looking at slide id ${args.currentSlideId ?? "(none)"}${args.selectedElementId ? ` and has element ${args.selectedElementId} selected` : ""}. "This slide" and "this" refer to those.\n\nDeck:\n${JSON.stringify(args.deck)}\n\n<source name="notes">\n${args.sourceText.slice(0, 40_000) || "(none)"}\n</source>`,
+    jsonSchema: AGENT_JSON_SCHEMA,
   };
 }

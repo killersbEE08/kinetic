@@ -61,6 +61,7 @@ import { deckTheme, getTheme } from "@/lib/deck/themes";
 import { stepCount } from "@/lib/deck/motion";
 import { applyDeckPatch, type PatchOp } from "@/lib/deck/patch";
 import { newId } from "@/lib/deck/ids";
+import { useIsMobile } from "@/lib/client/useMedia";
 import type { Deck, Frame, Slide } from "@/lib/deck/schema";
 
 type Tab = "design" | "motion" | "ask" | "review" | "comments";
@@ -93,7 +94,9 @@ function useCanvasWidth(zoom: Zoom) {
     ro.observe(node);
     return () => ro.disconnect();
   }, [node]);
-  const fit = Math.max(320, Math.min(box.w - 80, ((box.h - 72) * 16) / 9));
+  // Phones get a thin margin; the old 320px minimum made the slide wider than the screen.
+  const small = box.w > 0 && box.w < 640;
+  const fit = Math.max(160, Math.min(box.w - (small ? 24 : 80), ((box.h - (small ? 24 : 72)) * 16) / 9));
   return { attach, width: zoom === "fit" ? fit : 1920 * zoom, fit };
 }
 
@@ -194,6 +197,15 @@ function Editor({ id }: { id: string }) {
   const [copyFrom, setCopyFrom] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const { attach: attachCanvas, width: canvasWidth, fit: canvasFit } = useCanvasWidth(zoom);
+  const mobile = useIsMobile();
+  // Phones: start with the slide list, inspector and notes closed so the slide gets the screen.
+  const [mobileInit, setMobileInit] = useState(false);
+  if (mobile && !mobileInit) {
+    setMobileInit(true);
+    setRailOpen(false);
+    setInspectorOpen(search.get("comments") === "1" || search.get("review") === "1");
+    setNotesOpen(false);
+  }
 
   const editedOnce = useRef(false);
   const commit = useCallback(
@@ -352,10 +364,10 @@ function Editor({ id }: { id: string }) {
     return (
       <div className="flex h-dvh flex-col" aria-busy="true">
         <div className="h-14 border-b border-line bg-surface" />
-        <div className="grid flex-1 grid-cols-[212px_1fr_320px]">
-          <div className="space-y-3 border-r border-line bg-surface p-3">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton aspect-video" />)}</div>
-          <div className="p-10"><div className="skeleton mx-auto aspect-video max-w-[960px]" /></div>
-          <div className="border-l border-line bg-surface p-4"><div className="skeleton h-40" /></div>
+        <div className="grid flex-1 grid-cols-1 md:grid-cols-[212px_1fr_320px]">
+          <div className="hidden space-y-3 border-r border-line bg-surface p-3 md:block">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton aspect-video" />)}</div>
+          <div className="p-3 md:p-10"><div className="skeleton mx-auto aspect-video max-w-[960px]" /></div>
+          <div className="hidden border-l border-line bg-surface p-4 md:block"><div className="skeleton h-40" /></div>
         </div>
       </div>
     );
@@ -461,20 +473,20 @@ function Editor({ id }: { id: string }) {
   return (
     <div className="flex h-dvh flex-col bg-canvas">
       {/* Top bar */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
-        <Link href="/decks" className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-2 hover:bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] hover:text-ink" aria-label="Back to decks" title="Back to decks">
+      <header className="flex h-14 shrink-0 items-center gap-1 border-b border-line bg-surface px-2 sm:gap-2 sm:px-3">
+        <Link href="/decks" className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-[8px] text-ink-2 hover:bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] hover:text-ink" aria-label="Back to decks" title="Back to decks">
           <ArrowLeft size={17} aria-hidden="true" />
         </Link>
-        <span className="h-5 w-px bg-line" aria-hidden="true" />
+        <span className="hidden h-5 w-px bg-line sm:block" aria-hidden="true" />
         <IconButton label={railOpen ? "Hide slides" : "Show slides"} onClick={() => setRailOpen((o) => !o)} active={railOpen}>
           <PanelLeft size={16} aria-hidden="true" />
         </IconButton>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:flex-none">
           <TitleInput value={deck.title} disabled={!!pending} onCommit={(v) => commit([{ op: "replace", path: "/title", value: v }], { label: "Rename deck" })} />
-          <SaveStatus state={ed.saveState} />
+          <span className="hidden sm:inline-flex"><SaveStatus state={ed.saveState} /></span>
         </div>
-        <span className="mx-1 h-5 w-px bg-line" aria-hidden="true" />
-        <div className="flex items-center">
+        <span className="mx-1 hidden h-5 w-px bg-line md:block" aria-hidden="true" />
+        <div className="flex flex-none items-center">
           <IconButton label={ed.undoLabel ? `Undo ${ed.undoLabel}` : "Undo"} shortcut="Ctrl Z" onClick={undo} disabled={!ed.canUndo || !!pending}>
             <Undo2 size={16} aria-hidden="true" />
           </IconButton>
@@ -483,7 +495,11 @@ function Editor({ id }: { id: string }) {
           </IconButton>
         </div>
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex flex-none items-center gap-1 sm:gap-1.5">
+          <IconButton label="Ask AI" onClick={() => (setGrid(false), setHistoryOpen(false), setInspectorOpen(true), setTab("ask"))} active={inspectorOpen && tab === "ask"} className="md:hidden">
+            <Sparkles size={16} aria-hidden="true" />
+          </IconButton>
+          <span className="hidden items-center gap-1.5 md:flex">
           <IconButton label="Find and replace" shortcut="Ctrl F" onClick={() => (setHistoryOpen(false), setGrid(false), setFind((f) => (f ? null : "find")))} active={!!find}>
             <Search size={16} aria-hidden="true" />
           </IconButton>
@@ -502,22 +518,23 @@ function Editor({ id }: { id: string }) {
           <IconButton label="Keyboard shortcuts" shortcut="?" onClick={() => setHelpOpen(true)}>
             <Keyboard size={16} aria-hidden="true" />
           </IconButton>
+          </span>
           <IconButton label={inspectorOpen ? "Hide inspector" : "Show inspector"} onClick={() => setInspectorOpen((o) => !o)} active={inspectorOpen}>
             <PanelRight size={16} aria-hidden="true" />
           </IconButton>
-          <span className="mx-1 h-5 w-px bg-line" aria-hidden="true" />
-          <button type="button" className="btn btn-ghost btn-sm min-h-8 gap-1.5 px-2.5" onClick={() => setShareOpen(true)} disabled={!!pending}>
+          <span className="mx-1 hidden h-5 w-px bg-line sm:block" aria-hidden="true" />
+          <button type="button" className="btn btn-ghost btn-sm hidden min-h-8 gap-1.5 px-2.5 sm:inline-flex" onClick={() => setShareOpen(true)} disabled={!!pending}>
             <Share2 size={15} aria-hidden="true" />
             <span className="hidden lg:inline">Share</span>
           </button>
-          <button type="button" className="btn btn-ghost btn-sm min-h-8 gap-1.5 px-2.5" onClick={() => setExportOpen(true)} disabled={!!pending}>
+          <button type="button" className="btn btn-ghost btn-sm hidden min-h-8 gap-1.5 px-2.5 sm:inline-flex" onClick={() => setExportOpen(true)} disabled={!!pending}>
             <Download size={15} aria-hidden="true" />
             <span className="hidden lg:inline">Download</span>
           </button>
           <div className="flex items-stretch">
-            <Link href={`/d/${deck.id}/present?slide=${si + 1}`} style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }} className="btn btn-primary btn-sm min-h-8 gap-1.5 pl-3 pr-3">
+            <Link href={`/d/${deck.id}/present?slide=${si + 1}`} style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }} className="btn btn-primary btn-sm min-h-8 gap-1.5 px-2.5 sm:px-3" aria-label="Present">
               <Play size={14} fill="currentColor" aria-hidden="true" />
-              Present
+              <span className="hidden sm:inline">Present</span>
             </Link>
             <DropMenu
               align="right"
@@ -537,11 +554,18 @@ function Editor({ id }: { id: string }) {
                     Presenter view (notes, timer, next slide)
                   </Link>
                   <button type="button" role="menuitem" className={menuItem} onClick={() => (close(), play())}>Preview this slide here</button>
+                  <span className="sm:hidden">
+                    <button type="button" role="menuitem" className={menuItem} onClick={() => (close(), setShareOpen(true))} disabled={!!pending}><Share2 size={14} className="text-ink-2" aria-hidden="true" />Share</button>
+                    <button type="button" role="menuitem" className={menuItem} onClick={() => (close(), setExportOpen(true))} disabled={!!pending}><Download size={14} className="text-ink-2" aria-hidden="true" />Download</button>
+                    <button type="button" role="menuitem" className={menuItem} onClick={() => (close(), setHistoryOpen(false), setGrid(false), setFind("find"))}><Search size={14} className="text-ink-2" aria-hidden="true" />Find and replace</button>
+                    <button type="button" role="menuitem" className={menuItem} onClick={() => (close(), setFind(null), setGrid(false), setHistoryOpen(true))} disabled={!!pending}><History size={14} className="text-ink-2" aria-hidden="true" />Version history</button>
+                    <button type="button" role="menuitem" className={menuItem} onClick={() => (close(), setHistoryOpen(false), setGrid((g) => !g))}><LayoutGrid size={14} className="text-ink-2" aria-hidden="true" />Grid view</button>
+                  </span>
                 </>
               )}
             </DropMenu>
           </div>
-          <span className="ml-1 flex items-center gap-1"><NotificationBell align="right" /><AccountArea /></span>
+          <span className="ml-1 hidden items-center gap-1 sm:flex"><NotificationBell align="right" /><AccountArea /></span>
         </div>
       </header>
 
@@ -596,8 +620,15 @@ function Editor({ id }: { id: string }) {
           }}
         />
       ) : (
-      <div className="flex min-h-0 flex-1">
-        {railOpen && !grid && <SlideRail {...railProps} />}
+      <div className="relative flex min-h-0 flex-1">
+        {railOpen && !grid && (
+          <>
+            {mobile && <button type="button" aria-label="Close slides" className="fixed inset-0 top-14 z-30 bg-black/30" onClick={() => setRailOpen(false)} />}
+            <div className="fixed bottom-0 left-0 top-14 z-40 flex max-w-[80vw] shadow-[0_16px_40px_-12px_rgba(16,17,20,.35)] md:static md:z-auto md:max-w-none md:shadow-none">
+              <SlideRail {...railProps} onSelect={(i: number) => (goTo(i), mobile && setRailOpen(false))} />
+            </div>
+          </>
+        )}
 
         {grid ? (
           <SlideGrid {...railProps} onClose={() => setGrid(false)} />
@@ -647,7 +678,7 @@ function Editor({ id }: { id: string }) {
 
             {/* Canvas */}
             <div ref={attachCanvas} className="relative min-h-0 flex-1 overflow-auto" onPointerDown={(e) => e.target === e.currentTarget && setSelectedId(null)}>
-              <div className="flex min-h-full min-w-full items-center justify-center p-8" style={{ width: zoom === "fit" ? undefined : canvasWidth + 64 }} onPointerDown={(e) => e.target === e.currentTarget && setSelectedId(null)}>
+              <div className="flex min-h-full min-w-full items-center justify-center p-3 sm:p-8" style={{ width: zoom === "fit" ? undefined : canvasWidth + 64 }} onPointerDown={(e) => e.target === e.currentTarget && setSelectedId(null)}>
                 <div className={`relative flex-none rounded-[6px] ${changedHere ? "outline-[3px] outline-dashed outline-offset-8 outline-accent" : ""}`} style={{ width: canvasWidth }}>
                   {slide.hidden && !changedHere && (
                     <span className="absolute -top-9 left-0 inline-flex items-center gap-2 rounded-[8px] border border-line bg-surface px-2 py-1 text-[12px] text-ink-2 shadow-sm">
@@ -686,13 +717,13 @@ function Editor({ id }: { id: string }) {
             </div>
 
             {/* Bottom bar */}
-            <div className="flex h-11 shrink-0 items-center gap-2 border-t border-line bg-surface px-3 text-[12px]">
-              <button type="button" className={`btn btn-sm min-h-8 gap-1.5 px-2.5 ${playing ? "btn-secondary" : "btn-ghost"}`} onClick={playing ? () => setPlaying(false) : play} title="Play this slide (Ctrl P)">
+            <div className="flex h-11 shrink-0 items-center gap-1 border-t border-line bg-surface px-2 text-[12px] sm:gap-2 sm:px-3">
+              <button type="button" className={`btn btn-sm min-h-8 gap-1.5 px-2.5 ${playing ? "btn-secondary" : "btn-ghost"}`} onClick={playing ? () => setPlaying(false) : play} title="Play this slide (Ctrl P)" aria-label={playing ? "Stop" : "Play slide"}>
                 {playing ? <Square size={13} aria-hidden="true" /> : <Play size={13} aria-hidden="true" />}
-                {playing ? "Stop" : "Play slide"}
+                <span className="hidden sm:inline">{playing ? "Stop" : "Play slide"}</span>
               </button>
               {steps > 1 && (
-                <div className="flex items-center gap-1.5" role="group" aria-label="Build steps">
+                <div className="hidden items-center gap-1.5 sm:flex" role="group" aria-label="Build steps">
                   <span className="text-ink-2">Builds</span>
                   {Array.from({ length: steps }).map((_, k) => (
                     <button
@@ -723,11 +754,11 @@ function Editor({ id }: { id: string }) {
                 </IconButton>
               </div>
 
-              <button type="button" className={`btn btn-sm min-h-8 gap-1.5 px-2.5 ${notesOpen ? "btn-secondary" : "btn-ghost"}`} aria-expanded={notesOpen} aria-controls="speaker-notes" onClick={() => setNotesOpen((o) => !o)}>
+              <button type="button" className={`btn btn-sm min-h-8 gap-1.5 px-2.5 ${notesOpen ? "btn-secondary" : "btn-ghost"}`} aria-expanded={notesOpen} aria-controls="speaker-notes" aria-label="Notes" onClick={() => setNotesOpen((o) => !o)}>
                 <StickyNote size={14} aria-hidden="true" />
-                Notes
+                <span className="hidden sm:inline">Notes</span>
               </button>
-              <div className="flex items-center rounded-[8px] border border-line" role="group" aria-label="Zoom">
+              <div className="hidden items-center rounded-[8px] border border-line sm:flex" role="group" aria-label="Zoom">
                 <IconButton label="Zoom out" shortcut="Ctrl −" onClick={() => zoomBy(-1)} className="h-7 w-7">
                   <Minus size={14} aria-hidden="true" />
                 </IconButton>
@@ -777,7 +808,13 @@ function Editor({ id }: { id: string }) {
 
         {/* Inspector */}
         {inspectorOpen && !grid && (
-          <aside className="flex w-[320px] shrink-0 flex-col border-l border-line bg-surface" aria-label="Inspector">
+          <>
+          {mobile && <button type="button" aria-label="Close panel" className="fixed inset-0 z-30 bg-black/30" onClick={() => setInspectorOpen(false)} />}
+          <aside className="fixed inset-x-0 bottom-0 z-40 flex h-[75dvh] flex-col rounded-t-[16px] border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] shadow-[0_-16px_40px_-12px_rgba(16,17,20,.35)] md:static md:z-auto md:h-auto md:w-[320px] md:shrink-0 md:rounded-none md:border-l md:border-t-0 md:pb-0 md:shadow-none" aria-label="Inspector">
+            <div className="flex items-center justify-between px-4 pt-2 md:hidden">
+              <span className="mx-auto h-1 w-10 rounded-full bg-line" aria-hidden="true" />
+              <button type="button" className="btn btn-ghost btn-sm absolute right-2 top-1.5 min-h-8" onClick={() => setInspectorOpen(false)}>Close</button>
+            </div>
             <div className="p-2.5">
               <div role="tablist" aria-label="Inspector" className="grid grid-cols-5 gap-0.5 rounded-[10px] bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] p-0.5">
                 {TABS.map((t) => {
@@ -794,7 +831,7 @@ function Editor({ id }: { id: string }) {
                 })}
               </div>
             </div>
-            <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-2">
+            <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 pt-2">
               {tab === "design" &&
                 (editable ? <DesignPanel deck={deck} slideIndex={si} selected={selected} selectedIds={selectedIds} onSelectIds={setSelectedIds} commit={commit} frame={selectionFrame} onSelect={setSelectedId} /> : <p className="text-[13px] text-ink-2">Accept or discard the suggestion first.</p>)}
               {tab === "motion" &&
@@ -825,6 +862,7 @@ function Editor({ id }: { id: string }) {
               {tab === "comments" && <CommentsPanel deck={deck} slideIndex={Math.max(0, si)} selected={selected} api={comments} onGo={goToElement} />}
             </div>
           </aside>
+          </>
         )}
       </div>
       )}

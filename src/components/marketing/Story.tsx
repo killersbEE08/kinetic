@@ -8,6 +8,7 @@ import Link from "next/link";
 import { motion, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from "motion/react";
 import { SlideView } from "@/components/deck/SlideView";
 import { templateDeck } from "@/lib/deck/templates";
+import { useIsMobile } from "@/lib/client/useMedia";
 import { deckTheme } from "@/lib/deck/themes";
 import { stepCount } from "@/lib/deck/motion";
 import { offlineOutline } from "@/lib/ai/offline";
@@ -105,10 +106,13 @@ export function StoryScroll() {
   const slideO = useTransform(p, [0.65, 0.71], [0, 1]);
   const slideS = useTransform(p, [0.65, 0.75], [0.9, 1]);
   const bar = useTransform(p, [0, 1], [0, 1]);
+  // Phones: the pinned 320vh scroll scene stacks into a column taller than the screen and gets
+  // cut off, and it traps scrolling. Show the simple stacked version instead.
+  const mobile = useIsMobile();
 
-  if (reduce) {
+  if (reduce || mobile) {
     return (
-      <section id="overview" className="scroll-mt-20 bg-[var(--m-soft)] py-24">
+      <section id="overview" className="scroll-mt-20 bg-[var(--m-soft)] py-16 md:py-24">
         <div className="m-frame grid gap-10">
           {STEPS.map((s) => (
             <div key={s.n}>

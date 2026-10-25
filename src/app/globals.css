@@ -58,6 +58,21 @@
 html {
   background: var(--canvas);
   color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Stops wide content from making the whole page slide sideways on phones (which also
+   makes vertical scrolling feel stuck). `clip` keeps position: sticky working. */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Native dialogs never taller than the visible screen (mobile browser bars included). */
+dialog {
+  max-height: calc(100dvh - 24px);
+  max-width: calc(100vw - 16px);
 }
 
 body {
