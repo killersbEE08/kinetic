@@ -110,14 +110,14 @@ export function TiltCard({ children, className = "", max = 5 }: { children: Reac
 
 /**
  * A row of cards that keeps gliding sideways in a seamless loop. Pauses on hover and keyboard
- * focus; with reduced motion it becomes a normal sideways-scrollable row instead.
+ * focus; with reduced motion it stays still.
  */
 export function ScrollRow({ children, direction = 1, seconds = 70, className = "" }: { children: ReactNode; direction?: 1 | -1; seconds?: number; className?: string }) {
   const reduce = useReducedMotion();
   if (reduce) {
     return (
-      <div className={`overflow-x-auto overscroll-x-contain ${className}`}>
-        <div className="flex w-max gap-5 px-6">{children}</div>
+      <div className={`overflow-hidden ${className}`}>
+        <div className="flex w-max gap-5">{children}</div>
       </div>
     );
   }
